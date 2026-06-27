@@ -1,5 +1,5 @@
 streamlit>=1.32.0
-msal>=1.28.0
+msal-streamlit-authentication>=1.0.5
 requests>=2.31.0
 reportlab>=4.2.0
 pandas>=2.2.0
