@@ -14,6 +14,15 @@ from models import TimeEntry
 
 def parse_ics_bytes(data: bytes, category_filter: str = "") -> List[TimeEntry]:
     """Parse un fichier ICS et retourne les TimeEntry correspondants."""
+    # Détecter si on a reçu une page HTML au lieu d'un fichier ICS
+    preview = data[:500].lower()
+    if b"<!doctype html" in preview or b"<html" in preview:
+        raise ValueError(
+            "L'URL pointe vers une page web HTML, pas un fichier ICS.\n"
+            "Vérifiez que vous avez copié l'URL **iCal / ICS** et non l'adresse de la page calendrier.\n"
+            "→ Google Calendar : Paramètres → votre calendrier → 'Adresse secrète au format iCal'\n"
+            "→ Outlook Web : Paramètres → Calendrier → Calendriers partagés → Publier → lien ICS"
+        )
     try:
         cal = Calendar.from_ical(data)
     except Exception as exc:
@@ -36,9 +45,17 @@ def parse_ics_bytes(data: bytes, category_filter: str = "") -> List[TimeEntry]:
 def fetch_ics_url(url: str) -> bytes:
     """Télécharge un calendrier ICS depuis une URL."""
     try:
-        resp = requests.get(url, timeout=15)
+        resp = requests.get(url, timeout=15, headers={"Accept": "text/calendar"})
         resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "")
+        if "html" in content_type:
+            raise ValueError(
+                "L'URL a renvoyé une page HTML au lieu d'un fichier ICS.\n"
+                "Vérifiez que vous avez copié l'URL ICS directe (se termine souvent par .ics)."
+            )
         return resp.content
+    except ValueError:
+        raise
     except Exception as exc:
         raise ValueError(f"Impossible de télécharger l'URL : {exc}")
 
