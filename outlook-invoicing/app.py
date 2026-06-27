@@ -226,11 +226,17 @@ def page_calendar():
 
     default_client = ""
     if "Client par défaut" in parse_mode:
-        clients = get_config().get_clients()
-        default_client = (
-            st.selectbox("Client", [c.name for c in clients]) if clients
-            else st.text_input("Nom du client")
-        )
+        saved_clients = get_config().get_clients()
+        c_names = [c.name for c in saved_clients]
+        options = c_names + ["✏️ Nom personnalisé..."] if c_names else []
+        if options:
+            sel = st.selectbox("Client", options, key="def_client_sel")
+            if sel == "✏️ Nom personnalisé...":
+                default_client = st.text_input("Nom du client", key="def_client_custom")
+            else:
+                default_client = sel
+        else:
+            default_client = st.text_input("Nom du client")
 
     if st.button("📥 Importer les événements", type="primary"):
         with st.spinner("Analyse du calendrier…"):
@@ -310,6 +316,39 @@ def page_calendar():
             st.session_state.selected_ids = set()
             st.rerun()
 
+    # ── Assignation rapide du client aux lignes sélectionnées ────────
+    known_names = sorted(
+        {c.name for c in get_config().get_clients()} |
+        {e.client_name for e in entries if e.client_name}
+    )
+    qa, qb, qc = st.columns([3, 2, 1])
+    with qa:
+        q_options = known_names + ["✏️ Nom personnalisé..."]
+        q_sel = st.selectbox(
+            "Assigner le client aux lignes ✓",
+            q_options,
+            key="quick_client_sel",
+            label_visibility="visible",
+        )
+    with qb:
+        if q_sel == "✏️ Nom personnalisé...":
+            q_name = st.text_input(
+                "Nom personnalisé", key="quick_client_custom", label_visibility="visible"
+            )
+        else:
+            q_name = q_sel
+            st.empty()
+    with qc:
+        st.markdown("<div style='margin-top:1.65rem'></div>", unsafe_allow_html=True)
+        if st.button("Appliquer", key="apply_client", use_container_width=True):
+            if q_name:
+                for e in entries:
+                    if e.event_id in sel_ids:
+                        e.client_name = q_name
+                st.session_state.time_entries = entries
+                st.rerun()
+
+    client_options = known_names if known_names else None
     edited = st.data_editor(
         pd.DataFrame([
             {
@@ -329,7 +368,11 @@ def page_calendar():
             "✓": st.column_config.CheckboxColumn("✓", width=40),
             "Date": st.column_config.TextColumn("Date", width=100),
             "Début": st.column_config.TextColumn("Début", width=60),
-            "Client": st.column_config.TextColumn("Client", width=160),
+            "Client": (
+                st.column_config.SelectboxColumn("Client", options=client_options, width=160)
+                if client_options else
+                st.column_config.TextColumn("Client", width=160)
+            ),
             "Description": st.column_config.TextColumn("Description"),
             "Heures": st.column_config.NumberColumn(
                 "Heures", min_value=0.0, max_value=24.0, step=0.25, width=80
