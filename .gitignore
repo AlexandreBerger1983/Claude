@@ -3,3 +3,4 @@ __pycache__/
 *.pyo
 .env
 invoice_config.json
+.streamlit/secrets.toml

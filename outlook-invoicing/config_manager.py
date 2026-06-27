@@ -4,7 +4,9 @@ from typing import List
 
 from models import CompanyInfo, Client
 
-CONFIG_FILE = "invoice_config.json"
+# Chemin relatif au répertoire du script (compatible Streamlit Cloud)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(_HERE, "invoice_config.json")
 
 
 class ConfigManager:
@@ -57,6 +59,17 @@ class ConfigManager:
     # --- Azure config ---
 
     def get_azure_config(self) -> dict:
+        # Priorité : st.secrets (Streamlit Cloud) > invoice_config.json > vide
+        try:
+            import streamlit as st
+            secrets_azure = st.secrets.get("azure", {})
+            if secrets_azure.get("client_id"):
+                return {
+                    "client_id": secrets_azure["client_id"],
+                    "tenant_id": secrets_azure.get("tenant_id", "common"),
+                }
+        except Exception:
+            pass
         return self._data.get("azure", {})
 
     def save_azure_config(self, client_id: str, tenant_id: str = "common"):
