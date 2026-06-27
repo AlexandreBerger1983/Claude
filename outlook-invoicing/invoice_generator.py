@@ -3,7 +3,7 @@ from datetime import datetime
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import letter  # Format lettre (standard Québec/Canada)
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
 from reportlab.platypus import (
@@ -19,12 +19,12 @@ from models import Invoice
 
 # Palette couleurs
 PRIMARY = colors.HexColor("#1a3a5c")
-ACCENT = colors.HexColor("#2e7bcf")
+ACCENT  = colors.HexColor("#2e7bcf")
 LIGHT_BG = colors.HexColor("#f0f4f8")
-TEXT = colors.HexColor("#2d3748")
-BORDER = colors.HexColor("#e2e8f0")
+TEXT    = colors.HexColor("#2d3748")
+BORDER  = colors.HexColor("#e2e8f0")
 
-PAGE_W, PAGE_H = A4
+PAGE_W, PAGE_H = letter
 MARGIN = 2 * cm
 
 
@@ -33,7 +33,7 @@ class InvoiceGenerator:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=A4,
+            pagesize=letter,
             rightMargin=MARGIN,
             leftMargin=MARGIN,
             topMargin=MARGIN + 5 * mm,
@@ -49,27 +49,21 @@ class InvoiceGenerator:
         return buffer.getvalue()
 
     # ------------------------------------------------------------------
-    # Page chrome (header / footer bands)
+    # Chrome (bandes haut / bas)
     # ------------------------------------------------------------------
 
     def _draw_chrome(self, c, doc):
         c.saveState()
-
-        # Bande bleue en haut
         c.setFillColor(PRIMARY)
         c.rect(0, PAGE_H - 12 * mm, PAGE_W, 12 * mm, fill=1, stroke=0)
-
-        # Bande bleue en bas
         c.setFillColor(PRIMARY)
         c.rect(0, 0, PAGE_W, 8 * mm, fill=1, stroke=0)
-
-        # Texte pied de page
         c.setFillColor(colors.white)
         c.setFont("Helvetica", 7)
         c.drawCentredString(
-            PAGE_W / 2, 2.5 * mm, "Document généré automatiquement — Facturation Outlook"
+            PAGE_W / 2, 2.5 * mm,
+            "Document généré automatiquement — Facturation Outlook"
         )
-
         c.restoreState()
 
     # ------------------------------------------------------------------
@@ -78,274 +72,230 @@ class InvoiceGenerator:
 
     def _build_story(self, invoice: Invoice, styles):
         company = invoice.company
-        client = invoice.client
-        sym = company.currency_symbol or "€"
+        client  = invoice.client
+        sym     = company.currency_symbol or "$"
 
         story = []
         story.append(Spacer(1, 6 * mm))
 
-        # ── En-tête: nom entreprise + bloc "FACTURE N°" ──────────────
-        s_company_name = ParagraphStyle(
-            "CName",
-            fontSize=22,
-            fontName="Helvetica-Bold",
-            textColor=PRIMARY,
-            leading=26,
-        )
-        s_detail_right = ParagraphStyle(
-            "DR",
-            fontSize=10,
-            textColor=TEXT,
-            alignment=TA_RIGHT,
-            leading=16,
-        )
-        s_invoice_label = ParagraphStyle(
-            "ILabel",
-            fontSize=26,
-            fontName="Helvetica-Bold",
-            textColor=ACCENT,
-            alignment=TA_RIGHT,
-        )
-        s_small = ParagraphStyle(
-            "Small", fontSize=8.5, textColor=TEXT, leading=13
+        # ── En-tête ──────────────────────────────────────────────────
+        s_co_name = ParagraphStyle("CoN", fontSize=22, fontName="Helvetica-Bold",
+                                    textColor=PRIMARY, leading=26)
+        s_small   = ParagraphStyle("Sm", fontSize=8.5, textColor=TEXT, leading=13)
+        s_inv_lbl = ParagraphStyle("IL", fontSize=26, fontName="Helvetica-Bold",
+                                    textColor=ACCENT, alignment=TA_RIGHT)
+        s_inv_det = ParagraphStyle("ID", fontSize=10, textColor=TEXT,
+                                    alignment=TA_RIGHT, leading=16)
+
+        co_block  = self._company_block(company)
+        inv_block = (
+            f"<b>N°&nbsp;{invoice.invoice_number}</b><br/>"
+            f"Date&nbsp;: <b>{invoice.issue_date.strftime('%Y-%m-%d')}</b><br/>"
+            f"Échéance&nbsp;: <b>{invoice.due_date.strftime('%Y-%m-%d')}</b>"
         )
 
-        company_block = self._company_info_text(company)
-        invoice_block = (
-            f"<b>N° {invoice.invoice_number}</b><br/>"
-            f"Date : <b>{invoice.issue_date.strftime('%d/%m/%Y')}</b><br/>"
-            f"Échéance : <b>{invoice.due_date.strftime('%d/%m/%Y')}</b>"
-        )
-
-        header_tbl = Table(
+        hdr = Table(
             [[
-                [Paragraph(company.name or "Mon Entreprise", s_company_name),
-                 Paragraph(company_block, s_small)],
-                [Paragraph("FACTURE", s_invoice_label),
-                 Paragraph(invoice_block, s_detail_right)],
+                [Paragraph(company.name or "Mon Entreprise", s_co_name),
+                 Paragraph(co_block, s_small)],
+                [Paragraph("FACTURE", s_inv_lbl),
+                 Paragraph(inv_block, s_inv_det)],
             ]],
             colWidths=["55%", "45%"],
         )
-        header_tbl.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
-        story.append(header_tbl)
-
+        hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        story.append(hdr)
         story.append(Spacer(1, 5 * mm))
         story.append(HRFlowable(width="100%", thickness=2, color=ACCENT))
         story.append(Spacer(1, 6 * mm))
 
-        # ── Adresse client ──────────────────────────────────────────
-        s_white_bold = ParagraphStyle(
-            "WB", fontSize=8.5, fontName="Helvetica-Bold", textColor=colors.white
-        )
-        s_client_body = ParagraphStyle(
-            "CB", fontSize=10, textColor=TEXT, leading=15
-        )
+        # ── Adresse client ───────────────────────────────────────────
+        s_wh  = ParagraphStyle("WH", fontSize=8.5, fontName="Helvetica-Bold",
+                                textColor=colors.white)
+        s_cli = ParagraphStyle("CL", fontSize=10, textColor=TEXT, leading=15)
 
-        client_block = self._client_info_text(client)
-
-        client_tbl = Table(
+        cli_tbl = Table(
             [
-                [Paragraph("FACTURER À", s_white_bold)],
-                [Paragraph(client_block, s_client_body)],
+                [Paragraph("FACTURER À", s_wh)],
+                [Paragraph(self._client_block(client), s_cli)],
             ],
             colWidths=["48%"],
         )
-        client_tbl.setStyle(TableStyle([
+        cli_tbl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
             ("BACKGROUND", (0, 1), (-1, 1), LIGHT_BG),
-            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING",    (0, 0), (-1, -1), 6),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
         ]))
-        story.append(client_tbl)
+        story.append(cli_tbl)
         story.append(Spacer(1, 8 * mm))
 
         # ── Tableau des prestations ──────────────────────────────────
-        s_th = ParagraphStyle(
-            "TH",
-            fontSize=9,
-            fontName="Helvetica-Bold",
-            textColor=colors.white,
-            leading=12,
-        )
-        s_td = ParagraphStyle(
-            "TD", fontSize=9, textColor=TEXT, leading=12
-        )
-        s_td_r = ParagraphStyle(
-            "TDR", fontSize=9, textColor=TEXT, leading=12, alignment=TA_RIGHT
-        )
+        s_th  = ParagraphStyle("TH", fontSize=9, fontName="Helvetica-Bold",
+                                textColor=colors.white, leading=12)
+        s_thr = ParagraphStyle("THR", fontSize=9, fontName="Helvetica-Bold",
+                                textColor=colors.white, leading=12, alignment=TA_RIGHT)
+        s_td  = ParagraphStyle("TD", fontSize=9, textColor=TEXT, leading=12)
+        s_tdr = ParagraphStyle("TDR", fontSize=9, textColor=TEXT, leading=12,
+                                alignment=TA_RIGHT)
 
-        header_row = [
+        rows = [[
             Paragraph("Date", s_th),
             Paragraph("Description", s_th),
-            Paragraph("Heures", ParagraphStyle("THR", parent=s_th, alignment=TA_RIGHT)),
-            Paragraph(f"Taux ({sym}/h)", ParagraphStyle("THR2", parent=s_th, alignment=TA_RIGHT)),
-            Paragraph(f"Montant ({sym})", ParagraphStyle("THR3", parent=s_th, alignment=TA_RIGHT)),
-        ]
-
-        rows = [header_row]
-        for entry in invoice.entries:
-            amount = entry.hours * client.hourly_rate
+            Paragraph("Heures", s_thr),
+            Paragraph(f"Taux ({sym}/h)", s_thr),
+            Paragraph(f"Montant ({sym})", s_thr),
+        ]]
+        for e in invoice.entries:
             rows.append([
-                Paragraph(entry.date.strftime("%d/%m/%Y"), s_td),
-                Paragraph(entry.description or "—", s_td),
-                Paragraph(f"{entry.hours:.2f}", s_td_r),
-                Paragraph(f"{client.hourly_rate:.2f}", s_td_r),
-                Paragraph(f"{amount:.2f}", s_td_r),
+                Paragraph(e.date.strftime("%Y-%m-%d"), s_td),
+                Paragraph(e.description or "—", s_td),
+                Paragraph(f"{e.hours:.2f}", s_tdr),
+                Paragraph(f"{client.hourly_rate:.2f}", s_tdr),
+                Paragraph(f"{e.hours * client.hourly_rate:.2f}", s_tdr),
             ])
 
-        col_widths = [28 * mm, None, 22 * mm, 28 * mm, 28 * mm]
-        svc_tbl = Table(rows, colWidths=col_widths, repeatRows=1)
-
-        tbl_style = [
-            # En-tête
-            ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
-            ("LINEBELOW", (0, 0), (-1, 0), 1.5, ACCENT),
-            # Lignes de données
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT_BG]),
-            ("GRID", (0, 1), (-1, -1), 0.3, BORDER),
-            ("LINEBELOW", (0, -1), (-1, -1), 1.5, PRIMARY),
-            # Paddings
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
+        svc = Table(rows, colWidths=[28*mm, None, 22*mm, 28*mm, 28*mm], repeatRows=1)
+        svc.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0), PRIMARY),
+            ("LINEBELOW",     (0, 0), (-1, 0), 1.5, ACCENT),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, LIGHT_BG]),
+            ("GRID",          (0, 1), (-1, -1), 0.3, BORDER),
+            ("LINEBELOW",     (0, -1), (-1, -1), 1.5, PRIMARY),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ]
-        svc_tbl.setStyle(TableStyle(tbl_style))
-        story.append(svc_tbl)
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+        story.append(svc)
         story.append(Spacer(1, 5 * mm))
 
-        # ── Totaux ───────────────────────────────────────────────────
-        s_tot_label = ParagraphStyle(
-            "TotL", fontSize=10, textColor=TEXT, alignment=TA_RIGHT, leading=16
-        )
-        s_tot_value = ParagraphStyle(
-            "TotV", fontSize=10, textColor=TEXT, alignment=TA_RIGHT, leading=16
-        )
-        s_grand_label = ParagraphStyle(
-            "GLabel",
-            fontSize=12,
-            fontName="Helvetica-Bold",
-            textColor=colors.white,
-            alignment=TA_RIGHT,
-        )
-        s_grand_value = ParagraphStyle(
-            "GValue",
-            fontSize=12,
-            fontName="Helvetica-Bold",
-            textColor=colors.white,
-            alignment=TA_RIGHT,
-        )
-        s_hours = ParagraphStyle(
-            "Hours", fontSize=9, textColor=TEXT
-        )
+        # ── Totaux (sous-total + TPS + TVQ + TOTAL) ──────────────────
+        s_tot = ParagraphStyle("Tot", fontSize=10, textColor=TEXT,
+                                alignment=TA_RIGHT, leading=16)
+        s_grd = ParagraphStyle("Grd", fontSize=12, fontName="Helvetica-Bold",
+                                textColor=colors.white, alignment=TA_RIGHT)
+        s_hrs = ParagraphStyle("Hrs", fontSize=9, textColor=TEXT)
 
-        subtotal = invoice.subtotal
-        tax_amount = invoice.tax_amount
-        total = invoice.total
-        total_hours = invoice.total_hours
+        subtotal   = invoice.subtotal
+        tps_amount = invoice.tps_amount
+        tvq_amount = invoice.tvq_amount
+        total      = invoice.total
+        total_h    = invoice.total_hours
 
         tot_rows = [
-            [
-                Paragraph(f"Total : <b>{total_hours:.2f} h</b>", s_hours),
-                Paragraph("Sous-total HT", s_tot_label),
-                Paragraph(f"{subtotal:.2f} {sym}", s_tot_value),
-            ],
+            [Paragraph(f"Total : <b>{total_h:.2f} h</b>", s_hrs),
+             Paragraph("Sous-total", s_tot),
+             Paragraph(f"{subtotal:.2f}&nbsp;{sym}", s_tot)],
         ]
-        if company.tax_rate > 0:
+        if company.tps_rate > 0:
+            tps_lbl = f"TPS ({company.tps_rate:.1f}%)"
+            if company.tps_number:
+                tps_lbl += f" — N° {company.tps_number}"
             tot_rows.append([
                 "",
-                Paragraph(f"TVA ({company.tax_rate:.1f} %)", s_tot_label),
-                Paragraph(f"{tax_amount:.2f} {sym}", s_tot_value),
+                Paragraph(tps_lbl, s_tot),
+                Paragraph(f"{tps_amount:.2f}&nbsp;{sym}", s_tot),
+            ])
+        if company.tvq_rate > 0:
+            tvq_lbl = f"TVQ ({company.tvq_rate:.3f}%)"
+            if company.tvq_number:
+                tvq_lbl += f" — N° {company.tvq_number}"
+            tot_rows.append([
+                "",
+                Paragraph(tvq_lbl, s_tot),
+                Paragraph(f"{tvq_amount:.2f}&nbsp;{sym}", s_tot),
             ])
         tot_rows.append([
             "",
-            Paragraph("TOTAL TTC", s_grand_label),
-            Paragraph(f"{total:.2f} {sym}", s_grand_value),
+            Paragraph("TOTAL", s_grd),
+            Paragraph(f"<b>{total:.2f}&nbsp;{sym}</b>", s_grd),
         ])
 
         last = len(tot_rows) - 1
-        tot_tbl = Table(tot_rows, colWidths=["50%", "30%", "20%"])
-        tot_tbl.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 5),
+        tot = Table(tot_rows, colWidths=["50%", "33%", "17%"])
+        tot.setStyle(TableStyle([
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ("BACKGROUND", (1, last), (2, last), PRIMARY),
-            ("LINEABOVE", (1, last), (2, last), 1.5, ACCENT),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+            ("BACKGROUND",    (1, last), (2, last), PRIMARY),
+            ("LINEABOVE",     (1, last), (2, last), 1.5, ACCENT),
         ]))
-        story.append(tot_tbl)
+        story.append(tot)
         story.append(Spacer(1, 8 * mm))
 
-        # ── Informations de paiement ─────────────────────────────────
-        payment_lines = []
-        if company.bank_iban:
-            payment_lines.append(f"IBAN : <b>{company.bank_iban}</b>")
-        if company.bank_bic:
-            payment_lines.append(f"BIC : <b>{company.bank_bic}</b>")
-        payment_lines.append(
-            f"Règlement sous <b>{company.payment_terms_days} jours</b>"
+        # ── Paiement ─────────────────────────────────────────────────
+        pay_lines = []
+        if company.bank_info:
+            pay_lines.append(f"<b>{company.bank_info}</b>")
+        pay_lines.append(
+            f"Paiement dû dans <b>{company.payment_terms_days} jours</b>"
         )
         if invoice.notes:
-            payment_lines.append(f"<i>{invoice.notes}</i>")
+            pay_lines.append(f"<i>{invoice.notes}</i>")
 
-        payment_text = "<br/>".join(payment_lines)
         pay_tbl = Table(
             [
-                [Paragraph("INFORMATIONS DE PAIEMENT", s_white_bold)],
-                [Paragraph(payment_text, ParagraphStyle("Pay", fontSize=9, textColor=TEXT, leading=15))],
+                [Paragraph("INFORMATIONS DE PAIEMENT", s_wh)],
+                [Paragraph("<br/>".join(pay_lines),
+                           ParagraphStyle("Pay", fontSize=9, textColor=TEXT, leading=15))],
             ],
             colWidths=["100%"],
         )
         pay_tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), ACCENT),
-            ("BACKGROUND", (0, 1), (-1, 1), LIGHT_BG),
-            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BACKGROUND",    (0, 0), (-1, 0), ACCENT),
+            ("BACKGROUND",    (0, 1), (-1, 1), LIGHT_BG),
+            ("TOPPADDING",    (0, 0), (-1, -1), 7),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-            ("LEFTPADDING", (0, 0), (-1, -1), 10),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
         ]))
         story.append(pay_tbl)
-
         return story
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _company_info_text(self, company) -> str:
+    def _company_block(self, company) -> str:
         parts = []
         if company.address:
             parts.append(company.address)
-        if company.postal_code or company.city:
-            parts.append(f"{company.postal_code} {company.city}".strip())
+        loc = f"{company.city} ({company.province})  {company.postal_code}".strip()
+        if loc.strip("() "):
+            parts.append(loc)
         if company.country:
             parts.append(company.country)
         if company.email:
             parts.append(company.email)
         if company.phone:
             parts.append(company.phone)
-        if company.vat_number:
-            parts.append(f"TVA : {company.vat_number}")
-        if company.siret:
-            parts.append(f"SIRET : {company.siret}")
+        if company.neq:
+            parts.append(f"NEQ : {company.neq}")
+        if company.tps_number:
+            parts.append(f"N° TPS : {company.tps_number}")
+        if company.tvq_number:
+            parts.append(f"N° TVQ : {company.tvq_number}")
         return "<br/>".join(parts)
 
-    def _client_info_text(self, client) -> str:
+    def _client_block(self, client) -> str:
         parts = [f"<b>{client.name}</b>"]
         if client.address:
             parts.append(client.address)
-        if client.postal_code or client.city:
-            parts.append(f"{client.postal_code} {client.city}".strip())
+        loc = f"{client.city}  {client.postal_code}".strip()
+        if loc.strip():
+            parts.append(loc)
         if client.country:
             parts.append(client.country)
         if client.email:
             parts.append(client.email)
-        if client.vat_number:
-            parts.append(f"TVA : {client.vat_number}")
+        if client.tps_number:
+            parts.append(f"N° TPS : {client.tps_number}")
+        if client.tvq_number:
+            parts.append(f"N° TVQ : {client.tvq_number}")
         return "<br/>".join(parts)

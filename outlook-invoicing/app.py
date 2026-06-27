@@ -63,10 +63,14 @@ for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
+# ConfigManager dans session_state (pas dans le cache Streamlit)
+# → ne sera jamais vidé accidentellement par CTRL-C / "Clear cache"
+if "_config" not in st.session_state:
+    st.session_state["_config"] = ConfigManager()
 
-@st.cache_resource
+
 def get_config() -> ConfigManager:
-    return ConfigManager()
+    return st.session_state["_config"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -373,16 +377,17 @@ def page_clients():
                 n_postal = st.text_input("Code postal")
             with c2:
                 n_city = st.text_input("Ville")
-                n_country = st.text_input("Pays", value="France")
-                n_rate = st.number_input("Taux horaire (€/h)", min_value=0.0, step=5.0)
-                n_vat = st.text_input("Numéro TVA")
+                n_country = st.text_input("Pays", value="Canada")
+                n_rate = st.number_input("Taux horaire ($/h)", min_value=0.0, step=5.0)
+                n_tps = st.text_input("N° TPS client (si applicable)")
+                n_tvq = st.text_input("N° TVQ client (si applicable)")
 
             if st.form_submit_button("Ajouter", type="primary"):
                 if n_name.strip():
                     clients.append(Client(
                         name=n_name.strip(), email=n_email, address=n_addr,
                         postal_code=n_postal, city=n_city, country=n_country,
-                        hourly_rate=n_rate, vat_number=n_vat,
+                        hourly_rate=n_rate, tps_number=n_tps, tvq_number=n_tvq,
                     ))
                     config.save_clients(clients)
                     st.success(f"Client « {n_name} » ajouté.")
@@ -400,7 +405,7 @@ def page_clients():
     )
 
     for i, cl in enumerate(clients):
-        with st.expander(f"**{cl.name}** — {cl.hourly_rate:.0f} €/h"):
+        with st.expander(f"**{cl.name}** — {cl.hourly_rate:.0f} $/h"):
             with st.form(f"edit_client_{i}"):
                 c1, c2 = st.columns(2)
                 with c1:
@@ -412,17 +417,19 @@ def page_clients():
                     city = st.text_input("Ville", value=cl.city, key=f"cl_city_{i}")
                     country = st.text_input("Pays", value=cl.country, key=f"cl_cntry_{i}")
                     rate = st.number_input(
-                        "Taux (€/h)", value=float(cl.hourly_rate),
+                        "Taux ($/h)", value=float(cl.hourly_rate),
                         min_value=0.0, step=5.0, key=f"cl_rate_{i}",
                     )
-                    vat = st.text_input("N° TVA", value=cl.vat_number, key=f"cl_vat_{i}")
+                    tps = st.text_input("N° TPS client", value=cl.tps_number, key=f"cl_tps_{i}")
+                    tvq = st.text_input("N° TVQ client", value=cl.tvq_number, key=f"cl_tvq_{i}")
 
                 cs, cd = st.columns(2)
                 with cs:
                     if st.form_submit_button("💾 Enregistrer", type="primary"):
                         clients[i] = Client(
                             name=name, email=email, address=addr, postal_code=postal,
-                            city=city, country=country, hourly_rate=rate, vat_number=vat,
+                            city=city, country=country, hourly_rate=rate,
+                            tps_number=tps, tvq_number=tvq,
                         )
                         config.save_clients(clients)
                         st.success("Enregistré !")
@@ -571,46 +578,66 @@ def page_settings():
             address = st.text_input("Adresse", value=company.address)
             postal = st.text_input("Code postal", value=company.postal_code)
             city = st.text_input("Ville", value=company.city)
-            country = st.text_input("Pays", value=company.country)
+            province = st.text_input("Province", value=company.province)
         with c2:
+            country = st.text_input("Pays", value=company.country)
             email = st.text_input("Email", value=company.email)
             phone = st.text_input("Téléphone", value=company.phone)
-            vat = st.text_input("Numéro TVA", value=company.vat_number)
-            siret = st.text_input("SIRET", value=company.siret)
-            currencies = ["EUR", "USD", "GBP", "CHF"]
+            neq = st.text_input("NEQ (Numéro d'entreprise du Québec)", value=company.neq)
+            currencies = ["CAD", "USD"]
             cur_idx = currencies.index(company.currency) if company.currency in currencies else 0
             currency = st.selectbox("Devise", currencies, index=cur_idx)
 
-        st.markdown("**Facturation**")
-        b1, b2, b3 = st.columns(3)
+        st.markdown("**Numéros fiscaux**")
+        f1, f2 = st.columns(2)
+        with f1:
+            tps_number = st.text_input(
+                "N° TPS (fédéral)", value=company.tps_number,
+                placeholder="Ex: 123456789 RT0001",
+            )
+        with f2:
+            tvq_number = st.text_input(
+                "N° TVQ (provincial)", value=company.tvq_number,
+                placeholder="Ex: 1234567890 TQ0001",
+            )
+
+        st.markdown("**Taxes et facturation**")
+        b1, b2, b3, b4 = st.columns(4)
         with b1:
-            tax_rate = st.number_input(
-                "TVA (%)", value=float(company.tax_rate), min_value=0.0, max_value=100.0, step=0.5
+            tps_rate = st.number_input(
+                "TPS (%)", value=float(company.tps_rate), min_value=0.0, max_value=100.0, step=0.5
             )
         with b2:
+            tvq_rate = st.number_input(
+                "TVQ (%)", value=float(company.tvq_rate), min_value=0.0, max_value=100.0,
+                step=0.001, format="%.3f",
+            )
+        with b3:
             pay_terms = st.number_input(
                 "Délai paiement (j)", value=int(company.payment_terms_days), min_value=0
             )
-        with b3:
+        with b4:
             prefix = st.text_input("Préfixe facture", value=company.invoice_prefix)
 
         st.markdown("**Coordonnées bancaires**")
-        bi1, bi2 = st.columns(2)
-        with bi1:
-            iban = st.text_input("IBAN", value=company.bank_iban)
-        with bi2:
-            bic = st.text_input("BIC / SWIFT", value=company.bank_bic)
+        bank_info = st.text_area(
+            "Informations bancaires",
+            value=company.bank_info,
+            height=80,
+            placeholder="Ex: Banque Nationale du Canada — Transit: 12345 — Compte: 1234567",
+        )
 
         if st.form_submit_button("💾 Enregistrer", type="primary"):
-            sym_map = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF"}
             config.save_company(CompanyInfo(
                 name=name, address=address, postal_code=postal,
-                city=city, country=country, email=email, phone=phone,
-                vat_number=vat, siret=siret,
-                currency=currency, currency_symbol=sym_map.get(currency, "€"),
-                tax_rate=tax_rate, payment_terms_days=pay_terms,
+                city=city, province=province, country=country,
+                email=email, phone=phone,
+                neq=neq, tps_number=tps_number, tvq_number=tvq_number,
+                currency=currency, currency_symbol="$",
+                tps_rate=tps_rate, tvq_rate=tvq_rate,
+                payment_terms_days=pay_terms,
                 invoice_prefix=prefix, invoice_counter=company.invoice_counter,
-                bank_iban=iban, bank_bic=bic,
+                bank_info=bank_info,
             ))
             st.success("Paramètres enregistrés !")
             st.rerun()
