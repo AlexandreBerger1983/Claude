@@ -83,7 +83,7 @@ class InvoiceGenerator:
                                     textColor=PRIMARY, leading=26)
         s_small   = ParagraphStyle("Sm", fontSize=8.5, textColor=TEXT, leading=13)
         s_inv_lbl = ParagraphStyle("IL", fontSize=26, fontName="Helvetica-Bold",
-                                    textColor=ACCENT, alignment=TA_RIGHT)
+                                    textColor=ACCENT, alignment=TA_RIGHT, leading=32)
         s_inv_det = ParagraphStyle("ID", fontSize=10, textColor=TEXT,
                                     alignment=TA_RIGHT, leading=16)
 
@@ -94,12 +94,22 @@ class InvoiceGenerator:
             f"Échéance&nbsp;: <b>{invoice.due_date.strftime('%Y-%m-%d')}</b>"
         )
 
+        right_hdr = Table(
+            [[Paragraph("FACTURE", s_inv_lbl)],
+             [Paragraph(inv_block, s_inv_det)]],
+            colWidths=["100%"],
+        )
+        right_hdr.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ]))
+
         hdr = Table(
             [[
                 [Paragraph(company.name or "Mon Entreprise", s_co_name),
                  Paragraph(co_block, s_small)],
-                [Paragraph("FACTURE", s_inv_lbl),
-                 Paragraph(inv_block, s_inv_det)],
+                right_hdr,
             ]],
             colWidths=["55%", "45%"],
         )
