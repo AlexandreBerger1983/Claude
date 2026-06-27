@@ -8,10 +8,11 @@ Aucune configuration Azure AD requise.
 """
 
 import io
+import unicodedata
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 import streamlit as st
@@ -20,6 +21,74 @@ from config_manager import ConfigManager
 from ics_parser import fetch_ics_url, parse_ics_bytes
 from invoice_generator import InvoiceGenerator
 from models import Client, CompanyInfo, Invoice, TimeEntry
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Sage 50 CSV helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFD", s.lower().strip())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+_SAGE50_FIELDS = {
+    "name":        ["nom du client", "customer name", "client name", "nom", "name", "client"],
+    "address":     ["adresse de facturation ligne 1", "adresse 1", "bill-to address 1",
+                    "address 1", "adresse", "address"],
+    "city":        ["ville", "city"],
+    "province":    ["province", "province/state", "etat", "state"],
+    "postal_code": ["code postal", "postal/zip code", "code postale", "postal code", "zip"],
+    "country":     ["pays", "country"],
+    "email":       ["courriel", "adresse electronique", "email", "e-mail"],
+    "phone":       ["telephone 1", "telephone", "phone 1", "phone", "tel"],
+    "tps_number":  ["numero tps", "no tps", "tps number", "gst number", "numero gst"],
+    "tvq_number":  ["numero tvq", "no tvq", "tvq number", "qst number", "numero qst"],
+}
+
+
+def parse_sage50_csv(df: pd.DataFrame):
+    """
+    Retourne (clients: list[dict], col_map: dict[field, col_name | None]).
+    """
+    norm_cols = {_norm(c): c for c in df.columns}
+
+    def find(field):
+        for candidate in _SAGE50_FIELDS[field]:
+            key = _norm(candidate)
+            if key in norm_cols:
+                return norm_cols[key]
+        for norm_col, orig_col in norm_cols.items():
+            for candidate in _SAGE50_FIELDS[field]:
+                if _norm(candidate) in norm_col:
+                    return orig_col
+        return None
+
+    col_map = {f: find(f) for f in _SAGE50_FIELDS}
+
+    def cell(row, field) -> str:
+        col = col_map.get(field)
+        if not col:
+            return ""
+        v = str(row.get(col, "")).strip()
+        return "" if v in ("nan", "NaN", "None", "-") else v
+
+    clients = []
+    for _, row in df.iterrows():
+        name = cell(row, "name")
+        if not name:
+            continue
+        clients.append({
+            "name":        name,
+            "address":     cell(row, "address"),
+            "city":        cell(row, "city"),
+            "postal_code": cell(row, "postal_code"),
+            "country":     cell(row, "country") or "Canada",
+            "email":       cell(row, "email"),
+            "tps_number":  cell(row, "tps_number"),
+            "tvq_number":  cell(row, "tvq_number"),
+        })
+    return clients, col_map
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Config page
@@ -409,6 +478,127 @@ def page_clients():
     st.markdown('<div class="main-title">👥 Gestion des Clients</div>', unsafe_allow_html=True)
     config = get_config()
     clients = config.get_clients()
+
+    # ── Import Sage 50 ────────────────────────────────────────────────
+    with st.expander("📥 Importer depuis Sage 50 Canada (CSV)", expanded=False):
+        st.markdown(
+            """
+            <div class="step-box">
+            <b>Exporter la liste des clients depuis Sage 50 :</b>
+            <ol>
+            <li>Menu <b>Rapports</b> → <b>Clients et ventes</b> → <b>Liste des clients</b></li>
+            <li>Cliquez sur <b>Imprimer</b> (ou Fichier → Enregistrer sous)</li>
+            <li>Choisissez le format <b>CSV</b> ou <b>Excel (.xlsx)</b></li>
+            <li>Glissez le fichier ci-dessous</li>
+            </ol>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        sage_file = st.file_uploader(
+            "Fichier CSV / Excel Sage 50",
+            type=["csv", "xlsx", "xls"],
+            key="sage50_upload",
+        )
+        if sage_file:
+            try:
+                if sage_file.name.endswith((".xlsx", ".xls")):
+                    df_sage = pd.read_excel(sage_file, dtype=str)
+                else:
+                    for enc in ("utf-8-sig", "latin-1", "cp1252"):
+                        try:
+                            sage_file.seek(0)
+                            df_sage = pd.read_csv(sage_file, dtype=str, encoding=enc)
+                            break
+                        except Exception:
+                            continue
+
+                imported, col_map = parse_sage50_csv(df_sage)
+
+                if not imported:
+                    st.error("Aucun client trouvé dans ce fichier. Vérifiez que c'est bien "
+                             "la liste des clients Sage 50.")
+                else:
+                    st.success(f"{len(imported)} client(s) détecté(s) dans le fichier.")
+
+                    # Colonne non détectée
+                    missing = [f for f, c in col_map.items()
+                               if c is None and f in ("name", "city", "address")]
+                    if missing:
+                        st.warning(f"Colonnes non trouvées automatiquement : {', '.join(missing)}. "
+                                   "Vérifiez que le fichier est bien un export Sage 50.")
+
+                    s1, s2 = st.columns(2)
+                    with s1:
+                        default_rate = st.number_input(
+                            "Taux horaire par défaut ($/h)", min_value=0.0, step=5.0,
+                            value=0.0, key="sage_rate",
+                            help="Appliqué aux nouveaux clients — modifiable ensuite individuellement.",
+                        )
+                    with s2:
+                        merge_mode = st.radio(
+                            "Si le client existe déjà",
+                            ["Ignorer (conserver l'existant)", "Mettre à jour l'adresse et l'email"],
+                            key="sage_merge",
+                        )
+
+                    st.dataframe(
+                        pd.DataFrame(imported)[["name", "city", "email"]].rename(
+                            columns={"name": "Nom", "city": "Ville", "email": "Email"}
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                    if st.button("✅ Importer ces clients", type="primary", key="sage_import_btn"):
+                        existing_names = {c.name.lower(): i for i, c in enumerate(clients)}
+                        added = updated = skipped = 0
+                        for row in imported:
+                            key_low = row["name"].lower()
+                            if key_low in existing_names:
+                                if "Mettre à jour" in merge_mode:
+                                    idx = existing_names[key_low]
+                                    cl = clients[idx]
+                                    clients[idx] = Client(
+                                        name=cl.name,
+                                        email=row["email"] or cl.email,
+                                        address=row["address"] or cl.address,
+                                        city=row["city"] or cl.city,
+                                        postal_code=row["postal_code"] or cl.postal_code,
+                                        country=row["country"] or cl.country,
+                                        hourly_rate=cl.hourly_rate,
+                                        tps_number=row["tps_number"] or cl.tps_number,
+                                        tvq_number=row["tvq_number"] or cl.tvq_number,
+                                    )
+                                    updated += 1
+                                else:
+                                    skipped += 1
+                            else:
+                                clients.append(Client(
+                                    name=row["name"],
+                                    email=row["email"],
+                                    address=row["address"],
+                                    city=row["city"],
+                                    postal_code=row["postal_code"],
+                                    country=row["country"],
+                                    hourly_rate=default_rate,
+                                    tps_number=row["tps_number"],
+                                    tvq_number=row["tvq_number"],
+                                ))
+                                added += 1
+                        config.save_clients(clients)
+                        parts = []
+                        if added:
+                            parts.append(f"{added} ajouté(s)")
+                        if updated:
+                            parts.append(f"{updated} mis à jour")
+                        if skipped:
+                            parts.append(f"{skipped} ignoré(s) (doublon)")
+                        st.success("Import terminé : " + ", ".join(parts) + ".")
+                        st.rerun()
+
+            except Exception as exc:
+                st.error(f"Erreur de lecture du fichier : {exc}")
 
     with st.expander("➕ Ajouter un client", expanded=len(clients) == 0):
         with st.form("new_client"):
