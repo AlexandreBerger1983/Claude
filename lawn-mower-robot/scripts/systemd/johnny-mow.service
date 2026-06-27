@@ -1,0 +1,17 @@
+[Unit]
+Description=Johnny-Mow Robot Tondeuse
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/lawn-mower-robot
+ExecStart=/home/pi/lawn-mower-robot/.venv/bin/python -m src.main
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

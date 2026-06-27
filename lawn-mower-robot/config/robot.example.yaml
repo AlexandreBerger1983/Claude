@@ -1,0 +1,102 @@
+# Configuration du Robot Tondeuse / Poubelles
+# Copier ce fichier en robot.yaml et adapter au câblage réel
+
+robot:
+  name: "Johnny-Mow"
+
+# --- Moteurs de déplacement ---
+motors:
+  left:
+    in1: 17   # GPIO BCM
+    in2: 27
+    pwm: 18
+  right:
+    in1: 22
+    in2: 23
+    pwm: 24
+  max_speed: 80        # % PWM max en mode manuel (0-100)
+  ramp_time: 0.1       # secondes pour atteindre la vitesse cible
+
+# --- Lame de tonte ---
+blade:
+  pin: 25              # GPIO signal ESC
+  min_pulse: 1000      # µs (arrêt)
+  max_pulse: 2000      # µs (pleine puissance)
+  startup_speed: 60    # % au démarrage
+  full_speed: 85       # % en tonte
+
+# --- Bras robotiques (servos via PCA9685 sur I2C) ---
+arms:
+  i2c_address: 0x40
+  pwm_frequency: 50    # Hz
+
+  left:
+    shoulder: 0        # canal PCA9685
+    elbow: 1
+    wrist: 2
+    gripper: 3
+    # Angles en degrés
+    home:    [90, 45, 90, 0]
+    reach:   [45, 90, 90, 0]
+    grasp:   [45, 90, 90, 60]
+    lift:    [90, 45, 90, 60]
+
+  right:
+    shoulder: 4
+    elbow: 5
+    wrist: 6
+    gripper: 7
+    home:    [90, 45, 90, 0]
+    reach:   [135, 90, 90, 0]
+    grasp:   [135, 90, 90, 60]
+    lift:    [90, 45, 90, 60]
+
+  servo_min: 150       # pulse min PCA9685
+  servo_max: 600       # pulse max PCA9685
+
+# --- Capteurs ultrasons HC-SR04 ---
+sensors:
+  ultrasonic:
+    front:
+      trigger: 5
+      echo: 6
+    rear:
+      trigger: 13
+      echo: 19
+    left:
+      trigger: 26
+      echo: 20
+    right:
+      trigger: 21
+      echo: 16
+  obstacle_distance: 40  # cm - distance d'arrêt
+  blade_stop_distance: 30  # cm - arrêt lame
+
+  emergency_button: 4    # GPIO bouton d'arrêt d'urgence
+
+# --- Caméra ---
+camera:
+  enabled: true
+  resolution: [640, 480]
+  framerate: 15
+  stream_quality: 75   # qualité JPEG 0-100
+
+# --- GPS (optionnel) ---
+gps:
+  enabled: false
+  port: "/dev/ttyS0"
+  baud: 9600
+
+# --- Serveur web ---
+web:
+  host: "0.0.0.0"
+  port: 5000
+  secret_key: "change-me-in-production"
+  watchdog_timeout: 3.0  # secondes sans commande avant arrêt auto
+
+# --- Algorithme de tonte ---
+mowing:
+  strip_width: 30      # cm (largeur de passage)
+  turn_speed: 40       # % vitesse en virage
+  forward_speed: 60    # % vitesse en ligne droite
+  overlap: 5           # cm de chevauchement entre bandes
