@@ -34,23 +34,22 @@ def filter_eligible_bets(bets: list[dict], balance: float) -> list[dict]:
         if odds >= config.MAX_ODDS:
             continue
 
-        # Critère 2 : l'événement commence dans les prochaines MAX_EVENT_HOURS
-        if event_start is None or event_start > deadline:
-            continue
+        is_live = bet.get("is_live", False)
 
-        # L'événement ne doit pas déjà être commencé
-        if event_start <= now:
-            logger.debug("Événement déjà commencé, ignoré: %s", bet["description"])
-            continue
+        if is_live:
+            # Pari EN DIRECT : déjà en cours, pas de filtre de temps
+            time_label = "EN DIRECT"
+        else:
+            # Critère 2 : l'événement commence dans les prochaines MAX_EVENT_HOURS
+            if event_start is None or event_start > deadline:
+                continue
+            time_label = event_start.strftime("%Y-%m-%d %H:%M UTC")
 
         enriched = {**bet, "bet_amount": bet_amount}
         eligible.append(enriched)
         logger.info(
-            "Pari éligible — cote: %.4f | début: %s | montant: $%.2f | %s",
-            odds,
-            event_start.strftime("%Y-%m-%d %H:%M UTC"),
-            bet_amount,
-            bet["description"][:60],
+            "Pari éligible — cote: %.4f | %s | montant: $%.2f | %s",
+            odds, time_label, bet_amount, bet["description"][:60],
         )
 
     logger.info("%d pari(s) éligible(s) sur %d analysé(s).", len(eligible), len(bets))

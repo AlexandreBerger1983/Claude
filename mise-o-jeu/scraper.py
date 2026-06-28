@@ -1,25 +1,117 @@
 """
 Scraper Playwright pour miseojeuplus.espacejeux.com.
 Connexion via OAuth Loto-Québec (connexion.lotoquebec.com).
+
+Stratégie d'extraction:
+- EN DIRECT : itère sur les onglets de sports visibles (Soccer, Tennis…)
+- SPORTS A-Z : itère sur les catégories du menu latéral gauche
+- Extraction via JavaScript pour s'adapter au DOM dynamique (SPA React)
 """
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from playwright.sync_api import Page, sync_playwright, TimeoutError as PlaywrightTimeout
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 import config
 
 logger = logging.getLogger(__name__)
+
+# Noms de liens à ignorer lors de la découverte des onglets
+_NAV_BLACKLIST = {
+    "en direct", "résultats", "promotions", "comment jouer",
+    "gagnants", "zone experts", "acheter en magasin", "sports a-z",
+    "résultats complets", "mes paris", "sports",
+}
+
+# Script JavaScript commun pour extraire les paris depuis la page courante
+_JS_EXTRACT = """
+() => {
+    const results = [];
+
+    // Trouver tous les boutons contenant une cote (ex: "1,06" ou "1.98")
+    const allButtons = Array.from(document.querySelectorAll('button, [role="button"]'));
+    const oddsRe = /^\\d+[,\\.]\\d{2,4}$/;
+
+    const oddsButtons = allButtons.filter(b => {
+        const lines = b.innerText.trim().split('\\n').map(s => s.trim()).filter(Boolean);
+        return lines.some(l => oddsRe.test(l));
+    });
+
+    if (oddsButtons.length === 0) return results;
+
+    // Regrouper par conteneur parent commun (remonter jusqu'à 6 niveaux)
+    const containerMap = new Map();
+    for (const btn of oddsButtons) {
+        let el = btn.parentElement;
+        for (let i = 0; i < 6 && el; i++, el = el.parentElement) {
+            if (!containerMap.has(el)) containerMap.set(el, new Set());
+            containerMap.get(el).add(btn);
+        }
+    }
+
+    // Garder les conteneurs qui ont au moins 2 boutons de cotes distincts
+    const processed = new Set();
+    for (const [container, btns] of containerMap.entries()) {
+        if (btns.size < 2) continue;
+
+        const containerText = container.innerText || '';
+        if (containerText.length < 5 || containerText.length > 3000) continue;
+
+        // Éviter de traiter le même texte deux fois
+        const key = containerText.substring(0, 120);
+        if (processed.has(key)) continue;
+        processed.add(key);
+
+        // Extraire la cote minimale
+        const odds = [];
+        for (const btn of btns) {
+            const lines = btn.innerText.trim().split('\\n').map(s => s.trim());
+            for (const line of lines) {
+                if (oddsRe.test(line)) {
+                    const v = parseFloat(line.replace(',', '.'));
+                    if (!isNaN(v) && v >= 1.0 && v <= 100) odds.push(v);
+                }
+            }
+        }
+        if (odds.length === 0) continue;
+        const minOdds = Math.min(...odds);
+
+        // Chercher l'heure de l'événement dans le texte du conteneur
+        // Formats: "20h00", "20:00", "Bientôt", "en cours", "2e", "3e set"
+        const timeMatch = containerText.match(/(\\d{1,2})h(\\d{2})|(\\d{1,2}):(\\d{2})/);
+        const soonMatch = /bient[oô]t|en cours|live|\\.e\\s/i.test(containerText);
+
+        // ID: data-event-id sur le conteneur ou sur un bouton, sinon hash du texte
+        const eventId =
+            container.getAttribute('data-event-id') ||
+            container.getAttribute('data-id') ||
+            [...btns][0].getAttribute('data-selection-id') ||
+            [...btns][0].getAttribute('data-id') ||
+            key.replace(/\\s+/g, '_').substring(0, 80);
+
+        results.push({
+            id: eventId,
+            description: containerText.replace(/\\s+/g, ' ').trim().substring(0, 150),
+            minOdds: minOdds,
+            timeH: timeMatch ? parseInt(timeMatch[1] || timeMatch[3]) : -1,
+            timeM: timeMatch ? parseInt(timeMatch[2] || timeMatch[4]) : -1,
+            isSoonOrLive: soonMatch,
+        });
+    }
+
+    return results;
+}
+"""
 
 
 class MiseOJeuScraper:
     def __init__(self):
         self._playwright = None
         self._browser = None
-        self.page: Optional[Page] = None
+        self.page = None
 
     def start(self, headless: bool = True):
         self._playwright = sync_playwright().start()
@@ -42,6 +134,10 @@ class MiseOJeuScraper:
             self._playwright.stop()
         logger.info("Navigateur fermé.")
 
+    # ------------------------------------------------------------------
+    # Connexion OAuth
+    # ------------------------------------------------------------------
+
     def login(self) -> bool:
         if not config.USERNAME or not config.PASSWORD:
             raise ValueError("MOJ_USERNAME et MOJ_PASSWORD doivent être définis dans .env")
@@ -50,30 +146,24 @@ class MiseOJeuScraper:
         self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
 
         try:
-            # Cliquer sur le bouton "Connexion" en haut à droite
             logger.info("Clic sur le bouton Connexion…")
             self.page.click('a:has-text("Connexion"), button:has-text("Connexion")', timeout=15_000)
-
-            # Attendre la page OAuth de Loto-Québec
             self.page.wait_for_url("**/connexion.lotoquebec.com/**", timeout=20_000)
             logger.info("Page OAuth Loto-Québec chargée.")
 
-            # Étape 1 : courriel ou nom d'utilisateur
-            self.page.fill('input[type="email"], input[name*="user"], input[id*="username"]', config.USERNAME, timeout=10_000)
+            self.page.fill('input[type="email"], input[name*="user"], input[id*="username"]',
+                           config.USERNAME, timeout=10_000)
             self.page.click('button:has-text("Continuer"), button[type="submit"]')
 
-            # Étape 2 : mot de passe (parfois sur une deuxième page)
             self.page.wait_for_selector('input[type="password"]', timeout=10_000)
             self.page.fill('input[type="password"]', config.PASSWORD)
             self.page.click('button:has-text("Continuer"), button[type="submit"]')
 
-            # Attendre la redirection OAuth vers espacejeux.com (URL change suffit)
             self.page.wait_for_url(
                 lambda url: "espacejeux.com" in url,
                 timeout=30_000,
                 wait_until="commit",
             )
-            # Attendre que le DOM de base soit prêt
             self.page.wait_for_load_state("domcontentloaded", timeout=30_000)
             logger.info("Connexion réussie. URL: %s", self.page.url)
             return True
@@ -86,143 +176,201 @@ class MiseOJeuScraper:
             logger.error("Erreur lors de la connexion: %s", exc)
             return False
 
+    # ------------------------------------------------------------------
+    # Solde
+    # ------------------------------------------------------------------
+
     def get_balance(self) -> Optional[float]:
-        """Retourne le solde du compte en dollars."""
-        # Attendre que la session soit bien établie après la redirection OAuth
         try:
             self.page.wait_for_load_state("networkidle", timeout=20_000)
         except PlaywrightTimeout:
             pass
 
-        # Essayer plusieurs sélecteurs courants du site espacejeux
-        selectors = [
-            '[class*="wallet"]',
-            '[class*="credit"]',
-            '[class*="funds"]',
-            '[class*="balance"]',
-            '[class*="solde"]',
-            '[class*="amount"]',
-            # Le solde apparaît dans le header sous forme "20,00 $"
-            'header [class*="money"]',
-            'header [class*="cash"]',
-        ]
-        for sel in selectors:
+        for sel in ('[class*="wallet"]', '[class*="credit"]', '[class*="funds"]',
+                    '[class*="balance"]', '[class*="solde"]', '[class*="amount"]',
+                    'header [class*="money"]', 'header [class*="cash"]'):
             try:
-                el = self.page.locator(sel).first
-                text = el.inner_text(timeout=3_000).strip()
-                if not text:
-                    continue
-                # Normaliser: "20,00 $" → "20.00"
+                text = self.page.locator(sel).first.inner_text(timeout=3_000).strip()
                 normalized = re.sub(r'[^\d,.]', '', text).replace(",", ".")
                 if normalized:
-                    balance = float(normalized)
-                    logger.info("Solde: $%.2f (sélecteur: %s)", balance, sel)
-                    return balance
+                    b = float(normalized)
+                    if 0 < b < 100_000:
+                        logger.info("Solde: $%.2f (sélecteur: %s)", b, sel)
+                        return b
             except Exception:
                 continue
 
-        # Recherche par contenu texte: trouver l'élément qui contient "$ XX"
         try:
-            amount_els = self.page.locator('text=/\\d+[,.]\\d+\\s*\\$|\\$\\s*\\d+[,.]\\d+/').all()
-            for el in amount_els:
+            for el in self.page.locator('text=/\\d+[,.]\\d+\\s*\\$|\\$\\s*\\d+[,.]\\d+/').all():
                 text = el.inner_text(timeout=2_000).strip()
                 normalized = re.sub(r'[^\d,.]', '', text).replace(",", ".")
                 if normalized:
-                    balance = float(normalized)
-                    if 0 < balance < 100_000:
-                        logger.info("Solde trouvé par texte: $%.2f", balance)
-                        return balance
+                    b = float(normalized)
+                    if 0 < b < 100_000:
+                        logger.info("Solde trouvé par texte: $%.2f", b)
+                        return b
         except Exception:
             pass
 
         logger.warning("Impossible de lire le solde automatiquement.")
         return None
 
+    # ------------------------------------------------------------------
+    # Collecte des paris
+    # ------------------------------------------------------------------
+
     def fetch_available_bets(self) -> list[dict]:
-        """
-        Récupère tous les paris disponibles en parcourant:
-          1. La section EN DIRECT (paris en cours)
-          2. Tous les onglets sports (SPORTS A-Z)
-        """
         all_bets: list[dict] = []
         seen_ids: set[str] = set()
 
-        # Pages à visiter: EN DIRECT en premier, puis tous les onglets sports
-        pages_to_visit = [
-            (config.MOJ_LIVE_URL, "EN DIRECT"),
-            (config.MOJ_SPORTS_URL, "SPORTS (accueil)"),
-        ]
-
-        # Récupérer dynamiquement tous les liens de sports depuis le menu
-        sport_links = self._get_sport_tab_urls()
-        for name, url in sport_links:
-            pages_to_visit.append((url, name))
-
-        for url, label in pages_to_visit:
-            logger.info("Visite: %s (%s)", label, url)
-            bets = self._scrape_page(url)
+        def add_bets(bets: list[dict], source: str):
             new = 0
-            for bet in bets:
-                if bet["id"] not in seen_ids:
-                    seen_ids.add(bet["id"])
-                    all_bets.append(bet)
+            for b in bets:
+                if b["id"] not in seen_ids:
+                    seen_ids.add(b["id"])
+                    all_bets.append(b)
                     new += 1
-            logger.info("  → %d nouveau(x) pari(s) trouvé(s) sur cette page.", new)
+            logger.info("  [%s] %d nouveau(x) pari(s).", source, new)
 
-        logger.info("Total: %d pari(s) uniques collectés sur %d page(s).",
-                    len(all_bets), len(pages_to_visit))
+        # 1. EN DIRECT — tous les onglets sport
+        logger.info("=== EN DIRECT ===")
+        add_bets(self._scrape_live_all_tabs(), "EN DIRECT")
+
+        # 2. Sports à venir — onglets du menu latéral gauche
+        logger.info("=== SPORTS A-Z ===")
+        sport_urls = self._discover_sidebar_sport_urls()
+        for name, url in sport_urls:
+            logger.info("Visite: %s", name)
+            add_bets(self._extract_from_url(url, is_live=False), name)
+
+        logger.info("TOTAL: %d pari(s) uniques.", len(all_bets))
         return all_bets
 
-    def _get_sport_tab_urls(self) -> list[tuple[str, str]]:
-        """Retourne la liste (nom, url) de tous les onglets sports du menu."""
+    def _scrape_live_all_tabs(self) -> list[dict]:
+        """Visite EN DIRECT et clique sur chaque onglet sport."""
+        bets: list[dict] = []
+        try:
+            self.page.goto(config.MOJ_LIVE_URL, wait_until="domcontentloaded", timeout=30_000)
+            self.page.wait_for_timeout(2_500)
+
+            # Les onglets sont des boutons avec icônes (Soccer, Tennis, Golf…)
+            # Ils apparaissent généralement comme des boutons horizontaux avec texte court
+            tabs = self.page.locator(
+                '[class*="tab"]:not([class*="betslip"]):not([class*="coupon"]), '
+                '[class*="sport-filter"] button, '
+                '[class*="category-filter"] button'
+            ).all()
+
+            sport_tabs = [t for t in tabs if _is_sport_tab(t)]
+            logger.info("%d onglet(s) sport trouvé(s) en EN DIRECT.", len(sport_tabs))
+
+            if sport_tabs:
+                for tab in sport_tabs:
+                    name = _safe_text(tab)
+                    try:
+                        tab.click()
+                        self.page.wait_for_timeout(2_000)
+                        tab_bets = self._extract_from_current_page(is_live=True)
+                        logger.info("  Onglet '%s': %d pari(s).", name, len(tab_bets))
+                        bets.extend(tab_bets)
+                    except Exception as exc:
+                        logger.warning("  Onglet '%s' ignoré: %s", name, exc)
+            else:
+                # Pas d'onglets trouvés: extraire la page telle quelle
+                bets = self._extract_from_current_page(is_live=True)
+
+        except Exception as exc:
+            logger.warning("Erreur EN DIRECT: %s", exc)
+
+        return bets
+
+    def _discover_sidebar_sport_urls(self) -> list[tuple[str, str]]:
+        """
+        Récupère les URLs des catégories sport depuis le menu latéral gauche.
+        Filtre strictement pour ne garder que miseojeuplus.espacejeux.com/sports/fr/.
+        """
         try:
             self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
-            # Chercher tous les liens dans la barre de navigation Mise O Jeu+
-            nav_links = self.page.locator(
-                'nav a[href*="/sports/"], [class*="sport-menu"] a, [class*="nav-sport"] a'
-            ).all()
-            results = []
-            for link in nav_links:
-                href = link.get_attribute("href") or ""
-                name = link.inner_text(timeout=2_000).strip()
-                if not href or not name or name.upper() in ("EN DIRECT", "RÉSULTATS",
-                                                             "PROMOTIONS", "COMMENT JOUER",
-                                                             "GAGNANTS", "ZONE EXPERTS",
-                                                             "ACHETER EN MAGASIN", "SPORTS A-Z"):
+            self.page.wait_for_timeout(2_000)
+
+            links = self.page.locator('a[href*="/sports/fr/"]').all()
+            results: list[tuple[str, str]] = []
+            seen: set[str] = set()
+
+            for link in links:
+                href = (link.get_attribute("href") or "").strip()
+                name = _safe_text(link)
+
+                if not href or not name:
                     continue
+                if name.lower() in _NAV_BLACKLIST:
+                    continue
+
                 full_url = href if href.startswith("http") else f"{config.MOJ_BASE_URL}{href}"
+
+                # Garder uniquement le bon domaine, pas d'URL "résultats" ou historique
+                if "espacejeux.com" not in full_url:
+                    continue
+                skip_keywords = ("result", "bet-history", "en-jeux", "promotion", "login")
+                if any(k in full_url for k in skip_keywords):
+                    continue
+                if full_url in seen:
+                    continue
+
+                seen.add(full_url)
                 results.append((name, full_url))
-            logger.info("Onglets sports trouvés: %s", [n for n, _ in results])
+
+            logger.info("Catégories sport trouvées: %s", [n for n, _ in results])
             return results
+
         except Exception as exc:
-            logger.warning("Impossible de récupérer les onglets sports: %s", exc)
+            logger.warning("Erreur découverte onglets: %s", exc)
             return []
 
-    def _scrape_page(self, url: str) -> list[dict]:
-        """Charge une URL et extrait tous les paris de la page."""
+    def _extract_from_url(self, url: str, is_live: bool) -> list[dict]:
         try:
             self.page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            self.page.wait_for_selector(
-                '[class*="event"], [class*="match"], [class*="game"], [class*="selection"]',
-                timeout=15_000,
-            )
-        except PlaywrightTimeout:
-            logger.warning("Aucun événement trouvé ou délai dépassé: %s", url)
-            return []
+            self.page.wait_for_timeout(2_000)
         except Exception as exc:
-            logger.warning("Erreur lors du chargement de %s: %s", url, exc)
+            logger.warning("Impossible de charger %s: %s", url, exc)
+            return []
+        return self._extract_from_current_page(is_live=is_live)
+
+    def _extract_from_current_page(self, is_live: bool) -> list[dict]:
+        """Exécute le script JS d'extraction et convertit le résultat."""
+        try:
+            raw = self.page.evaluate(_JS_EXTRACT)
+        except Exception as exc:
+            logger.warning("Erreur extraction JS: %s", exc)
             return []
 
-        cards = self.page.locator(
-            '[class*="event-card"], [class*="match-card"], [class*="game-row"], [class*="event-row"]'
-        ).all()
+        now = datetime.now(tz=timezone.utc)
+        bets: list[dict] = []
 
-        bets = []
-        for card in cards:
-            bet = _parse_event_card(card)
-            if bet:
-                bets.append(bet)
+        for item in raw:
+            if is_live:
+                # Un pari en direct est déjà commencé → compte comme "maintenant"
+                event_start = now
+            else:
+                event_start = _parse_event_time(item, now)
+                if event_start is None:
+                    continue
+
+            bets.append({
+                "id": str(item["id"])[:120],
+                "description": item["description"][:120],
+                "odds": float(item["minOdds"]),
+                "event_start": event_start,
+                "event_end": None,
+                "sport": "inconnu",
+                "is_live": is_live,
+            })
+
         return bets
+
+    # ------------------------------------------------------------------
+    # Placement du pari
+    # ------------------------------------------------------------------
 
     def place_bet(self, bet_id: str, amount: float) -> bool:
         if config.DRY_RUN:
@@ -231,21 +379,21 @@ class MiseOJeuScraper:
 
         logger.info("Placement du pari: id=%s montant=$%.2f", bet_id, amount)
         try:
-            odds_btn = self.page.locator(
-                f'[data-event-id="{bet_id}"] [class*="odds"], [data-id="{bet_id}"]'
+            btn = self.page.locator(
+                f'[data-event-id="{bet_id}"] button, '
+                f'[data-id="{bet_id}"] button, '
+                f'button[data-selection-id="{bet_id}"]'
             ).first
-            odds_btn.click()
+            btn.click()
 
             self.page.wait_for_selector('[class*="betslip"], [class*="coupon"]', timeout=10_000)
-            amount_input = self.page.locator(
+            self.page.locator(
                 '[class*="betslip"] input[type="number"], [class*="coupon"] input[type="number"]'
-            ).first
-            amount_input.fill(str(round(amount, 2)))
+            ).first.fill(str(round(amount, 2)))
 
-            confirm_btn = self.page.locator(
+            self.page.locator(
                 '[class*="betslip"] button[class*="confirm"], [class*="coupon"] button[class*="place"]'
-            ).first
-            confirm_btn.click()
+            ).first.click()
             self.page.wait_for_load_state("networkidle", timeout=10_000)
 
             logger.info("Pari placé avec succès.")
@@ -255,49 +403,42 @@ class MiseOJeuScraper:
             return False
 
 
-def _parse_event_card(card) -> Optional[dict]:
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+def _safe_text(locator) -> str:
     try:
-        text = card.inner_text()
-
-        odds_matches = re.findall(r'\b(1\.\d{2,4}|[12]\.\d{2,4})\b', text)
-        if not odds_matches:
-            return None
-        odds = float(odds_matches[0])
-
-        date_match = re.search(
-            r'(\d{1,2})\s+(janv|févr|mars|avr|mai|juin|juil|août|sept|oct|nov|déc)[a-z]*\.?\s+(\d{4})[\s,]+(\d{1,2}):(\d{2})',
-            text, re.IGNORECASE,
-        )
-        if not date_match:
-            return None
-
-        month_map = {
-            'janv': 1, 'févr': 2, 'mars': 3, 'avr': 4, 'mai': 5,
-            'juin': 6, 'juil': 7, 'août': 8, 'sept': 9, 'oct': 10,
-            'nov': 11, 'déc': 12,
-        }
-        event_start = datetime(
-            int(date_match.group(3)),
-            month_map.get(date_match.group(2).lower()[:4].rstrip('.'), 1),
-            int(date_match.group(1)),
-            int(date_match.group(4)),
-            int(date_match.group(5)),
-            tzinfo=timezone.utc,
-        )
-
-        event_id = (
-            card.get_attribute("data-event-id")
-            or card.get_attribute("data-id")
-            or str(hash(text[:80]))
-        )
-
-        return {
-            "id": event_id,
-            "description": text[:100].strip().replace("\n", " "),
-            "odds": odds,
-            "event_start": event_start,
-            "event_end": None,
-            "sport": "inconnu",
-        }
+        return locator.inner_text(timeout=2_000).strip()
     except Exception:
+        return ""
+
+
+def _is_sport_tab(locator) -> bool:
+    """Retourne True si l'élément ressemble à un onglet sport (texte court, pas de lien externe)."""
+    text = _safe_text(locator)
+    if not text or len(text) > 30:
+        return False
+    boring = {"paris simples", "combos", "paramètres", "calculette", "mes paris",
+               "vider la calculette", "en direct", "résultats", "sports a-z"}
+    return text.lower() not in boring
+
+
+def _parse_event_time(item: dict, now: datetime) -> Optional[datetime]:
+    """
+    Construit un datetime pour l'heure de l'événement.
+    Retourne None si l'heure est inconnue.
+    """
+    if item.get("isSoonOrLive"):
+        return now  # "Bientôt" ou indicateur live → considéré comme imminent
+
+    h, m = item.get("timeH", -1), item.get("timeM", -1)
+    if h < 0 or m < 0:
         return None
+
+    # Construire l'heure pour aujourd'hui (heure locale Montréal → UTC approx)
+    candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    # Si l'heure est déjà passée, c'est peut-être demain
+    if candidate < now:
+        candidate += timedelta(days=1)
+    return candidate
