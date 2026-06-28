@@ -183,17 +183,48 @@ def sidebar():
 
 
 def page_calendar():
-    st.markdown('<div class="main-title">📅 Import Calendrier Outlook</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">📅 Import Calendrier</div>', unsafe_allow_html=True)
 
     # ── Guide d'export ────────────────────────────────────────────────
-    with st.expander("ℹ️ Comment exporter mon calendrier Outlook ?", expanded=False):
-        tab_desktop, tab_web = st.tabs(["Outlook Desktop (Windows)", "Outlook Web / Outlook.com"])
+    with st.expander("ℹ️ Comment exporter mon calendrier ?", expanded=False):
+        tab_apple, tab_desktop, tab_web, tab_google = st.tabs([
+            "Apple Calendar (Mac/iCloud)",
+            "Outlook Desktop (Windows)",
+            "Outlook Web / Microsoft 365",
+            "Google Calendar",
+        ])
+
+        with tab_apple:
+            st.markdown(
+                """
+                <div class="step-box">
+                <b>Apple Calendar — Mac (fichier .ics) :</b>
+                <ol>
+                <li>Ouvrez l'app <b>Calendrier</b> sur votre Mac</li>
+                <li>Dans la barre latérale, cliquez droit sur votre calendrier → <b>Exporter…</b></li>
+                <li>Choisissez un emplacement et enregistrez le <code>.ics</code></li>
+                <li>Importez le fichier ci-dessous</li>
+                </ol>
+                </div>
+
+                <div class="step-box" style="margin-top:.5rem">
+                <b>iCloud Calendar — URL ICS (synchronisation automatique) :</b>
+                <ol>
+                <li>Allez sur <b>icloud.com</b> → Calendrier</li>
+                <li>Cliquez sur l'icône de partage 📡 à côté de votre calendrier</li>
+                <li>Activez <b>Calendrier public</b></li>
+                <li>Copiez le lien et collez-le dans le champ URL ci-dessous</li>
+                </ol>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         with tab_desktop:
             st.markdown(
                 """
                 <div class="step-box">
-                <b>Outlook Desktop :</b>
+                <b>Outlook Desktop (Windows) :</b>
                 <ol>
                 <li>Ouvrez Outlook</li>
                 <li>Cliquez sur <b>Fichier → Enregistrer le calendrier</b></li>
@@ -205,25 +236,31 @@ def page_calendar():
                 """,
                 unsafe_allow_html=True,
             )
+
         with tab_web:
             st.markdown(
                 """
                 <div class="step-box">
-                <b>Outlook Web (outlook.com / Microsoft 365) :</b>
+                <b>Outlook Web / Microsoft 365 :</b>
                 <ol>
-                <li>Allez sur <a href="https://outlook.live.com" target="_blank">outlook.live.com</a></li>
                 <li>⚙️ Paramètres → <b>Afficher tous les paramètres</b></li>
                 <li>Calendrier → <b>Calendriers partagés</b></li>
                 <li>Section <i>"Publier un calendrier"</i> → sélectionnez votre calendrier → <b>Publier</b></li>
                 <li>Copiez le lien <b>ICS</b> et collez-le dans le champ URL ci-dessous</li>
                 </ol>
                 </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-                <div class="step-box" style="margin-top:.5rem">
+        with tab_google:
+            st.markdown(
+                """
+                <div class="step-box">
                 <b>Google Calendar :</b>
                 <ol>
-                <li>Paramètres → votre calendrier → <b>Intégrer le calendrier</b></li>
-                <li>Copiez l'<b>URL au format iCal</b></li>
+                <li>⚙️ Paramètres → votre calendrier → <b>Intégrer le calendrier</b></li>
+                <li>Copiez l'<b>URL au format iCal</b> et collez-la ci-dessous</li>
                 </ol>
                 </div>
                 """,
@@ -792,6 +829,68 @@ def page_invoice():
                 file_name=f"Factures_{inv_date.strftime('%Y%m')}.zip",
                 mime="application/zip", key="dl_zip",
             )
+
+    # ── Export Sage 50 — Fiches de temps ─────────────────────────────
+    st.markdown("---")
+    with st.expander("📤 Exporter les fiches de temps vers Sage 50", expanded=False):
+        st.markdown(
+            """
+            <div class="step-box">
+            Génère un CSV importable dans Sage 50 Canada :<br/>
+            <b>Fichier → Importer/Exporter → Importer des activités de temps</b><br/>
+            Lors de l'import, Sage 50 vous permettra de faire correspondre les colonnes.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        se1, se2 = st.columns(2)
+        with se1:
+            sage_employee = st.text_input(
+                "Nom de l'employé / consultant",
+                value=company.name,
+                key="sage_emp",
+                help="Doit correspondre exactement au nom dans Sage 50.",
+            )
+        with se2:
+            sage_activity = st.text_input(
+                "Code d'activité Sage 50",
+                value="SERV",
+                key="sage_act",
+                help="Code de l'activité de temps dans Sage 50 (ex: SERV, CONSULT, DEVEL).",
+            )
+
+        if st.button("⬇️ Télécharger CSV Sage 50", key="sage_export_btn"):
+            rows = []
+            for cname, clist in by_client.items():
+                cl = config.get_client_by_name(cname)
+                for e in sorted(clist, key=lambda x: x.date):
+                    montant = round(e.hours * cl.hourly_rate, 2)
+                    rows.append({
+                        "Type":        "TEMPS",
+                        "Date":        e.date.strftime("%Y-%m-%d"),
+                        "Employé":     sage_employee,
+                        "Client":      cname,
+                        "Activité":    sage_activity,
+                        "Heures":      f"{e.hours:.2f}",
+                        "Taux":        f"{cl.hourly_rate:.2f}",
+                        "Montant":     f"{montant:.2f}",
+                        "Description": e.description or "",
+                        "Facturable":  "Oui",
+                    })
+            if rows:
+                df_export = pd.DataFrame(rows)
+                csv_bytes = df_export.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                fname = f"Sage50_Temps_{inv_date.strftime('%Y%m')}.csv"
+                st.download_button(
+                    f"⬇️ {fname}",
+                    data=csv_bytes,
+                    file_name=fname,
+                    mime="text/csv",
+                    key="dl_sage50",
+                )
+                st.dataframe(df_export, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Aucune entrée à exporter.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
