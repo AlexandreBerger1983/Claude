@@ -9,6 +9,7 @@ PASSWORD = os.getenv("MOJ_PASSWORD", "")
 MAX_ODDS = float(os.getenv("MAX_ODDS", "1.08"))
 MAX_EVENT_HOURS = int(os.getenv("MAX_EVENT_HOURS", "2"))
 BET_FRACTION = float(os.getenv("BET_FRACTION", "0.50"))
+MIN_BETS_TO_PLACE = int(os.getenv("MIN_BETS_TO_PLACE", "5"))
 CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "15"))
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 FALLBACK_BALANCE = float(os.getenv("FALLBACK_BALANCE", "0"))

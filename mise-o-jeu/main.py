@@ -44,8 +44,8 @@ def get_balance(scraper: MiseOJeuScraper) -> float:
 
 def check_and_bet(scraper: MiseOJeuScraper) -> bool:
     """
-    Vérifie les paris et place une mise si éligible.
-    Retourne True si au moins un pari a été traité.
+    Vérifie les paris et place les mises si au moins MIN_BETS_TO_PLACE
+    paris éligibles sont trouvés. Retourne True si des paris ont été placés.
     """
     balance = get_balance(scraper)
     if balance <= 0:
@@ -57,9 +57,17 @@ def check_and_bet(scraper: MiseOJeuScraper) -> bool:
     eligible = filter_eligible_bets(bets, balance)
     logger.info(summarize(eligible))
 
-    if not eligible:
+    if len(eligible) < config.MIN_BETS_TO_PLACE:
+        logger.info(
+            "%d pari(s) éligible(s) trouvé(s) — minimum requis: %d. On attend.",
+            len(eligible), config.MIN_BETS_TO_PLACE,
+        )
         return False
 
+    logger.info(
+        "✓ %d paris éligibles trouvés (≥ %d). Placement en cours…",
+        len(eligible), config.MIN_BETS_TO_PLACE,
+    )
     for bet in eligible:
         success = scraper.place_bet(bet["id"], bet["bet_amount"])
         status = "placé" if success else "ÉCHEC"
@@ -120,8 +128,8 @@ def main():
         logger.info("=== MODE SIMULATION (DRY_RUN=true) — aucun vrai pari ne sera placé ===")
 
     logger.info(
-        "Configuration: MAX_ODDS=%.4f | MAX_EVENT_HOURS=%dh | BET_FRACTION=%.0f%%",
-        config.MAX_ODDS, config.MAX_EVENT_HOURS, config.BET_FRACTION * 100,
+        "Configuration: MAX_ODDS=%.4f | MAX_EVENT_HOURS=%dh | BET_FRACTION=%.0f%% | MIN_BETS=%d",
+        config.MAX_ODDS, config.MAX_EVENT_HOURS, config.BET_FRACTION * 100, config.MIN_BETS_TO_PLACE,
     )
 
     run_session(headless=headless, once=args.once)
