@@ -22,7 +22,10 @@ class MiseOJeuScraper:
 
     def start(self, headless: bool = True):
         self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=headless)
+        self._browser = self._playwright.chromium.launch(
+            headless=headless,
+            args=["--ignore-certificate-errors", "--disable-web-security"],
+        )
         context = self._browser.new_context(
             locale="fr-CA",
             timezone_id="America/Montreal",
