@@ -8,6 +8,7 @@ import clsx from 'clsx'
 const pageTitles = {
   '/': 'Tableau de bord',
   '/projets': 'Projets',
+  '/estimateur': 'Estimateur sur le terrain',
   '/soumissions': 'Soumissions',
   '/facturation': 'Facturation',
   '/clients': 'Clients',

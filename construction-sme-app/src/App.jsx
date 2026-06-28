@@ -12,6 +12,7 @@ import Subcontractors from './components/subcontractors/Subcontractors'
 import Calendar from './components/calendar/Calendar'
 import Documents from './components/documents/Documents'
 import Reports from './components/reports/Reports'
+import Estimator from './components/estimator/Estimator'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="projets/*" element={<Projects />} />
+        <Route path="estimateur" element={<Estimator />} />
         <Route path="soumissions/*" element={<Quotes />} />
         <Route path="facturation" element={<Invoices />} />
         <Route path="clients" element={<Clients />} />

@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, FolderKanban, FileText, Receipt, Users, HardHat,
   Clock, Package, Wrench, BarChart3, Calendar, FolderOpen,
-  ChevronRight, Building2, Bell, Settings, LogOut,
+  ChevronRight, Building2, Bell, Settings, LogOut, Calculator,
 } from 'lucide-react'
 import { alerts } from '../../data/mockData'
 import clsx from 'clsx'
@@ -10,6 +10,7 @@ import clsx from 'clsx'
 const nav = [
   { label: 'Tableau de bord', to: '/', icon: LayoutDashboard },
   { label: 'Projets', to: '/projets', icon: FolderKanban },
+  { label: '✦ Estimateur', to: '/estimateur', icon: Calculator, highlight: true },
   { label: 'Soumissions', to: '/soumissions', icon: FileText },
   { label: 'Facturation', to: '/facturation', icon: Receipt },
   { label: 'Clients', to: '/clients', icon: Users },
@@ -59,13 +60,17 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {nav.map(({ label, to, icon: Icon }) => (
+        {nav.map(({ label, to, icon: Icon, highlight }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
-            className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}
-            title={collapsed ? label : undefined}
+            className={({ isActive }) => clsx(
+              'sidebar-link',
+              isActive && 'active',
+              highlight && !collapsed && 'bg-brand-500/10 border border-brand-500/20 text-brand-300 hover:text-brand-100 hover:bg-brand-500/20'
+            )}
+            title={collapsed ? label.replace('✦ ', '') : undefined}
           >
             <Icon size={17} className="flex-shrink-0" />
             {!collapsed && <span className="truncate">{label}</span>}
