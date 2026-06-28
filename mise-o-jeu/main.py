@@ -1,23 +1,19 @@
 """
 Mise O Jeu — Bot de paris automatisé
 =====================================
-Lance une vérification périodique des paris disponibles sur miseojeu.com.
-Place automatiquement un pari de 50 % du solde sur tout pari dont:
-  - la cote est < MAX_ODDS (défaut: 1.02)
-  - l'événement commence dans moins de MAX_EVENT_HOURS (défaut: 24 h)
+Se connecte une fois, puis vérifie les paris toutes les 5 minutes
+sans fermer le navigateur. Le navigateur reste ouvert entre les cycles.
 
 Usage:
-  python main.py            # démarre la boucle planifiée
-  python main.py --once     # une seule vérification puis quitte
-  python main.py --headless false   # ouvre le navigateur (debug)
+  python main.py                    # boucle continue (navigateur caché)
+  python main.py --headless false   # boucle avec navigateur visible
+  python main.py --once             # un seul cycle puis quitte
 """
 
 import argparse
 import logging
 import sys
 import time
-
-import schedule
 
 import config
 from scraper import MiseOJeuScraper
@@ -33,42 +29,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+RETRY_INTERVAL_SECONDS = 5 * 60  # 5 minutes entre chaque vérification
 
-def run_once(headless: bool = True):
-    """Effectue un cycle complet: connexion → analyse → mise(s)."""
+
+def get_balance(scraper: MiseOJeuScraper) -> float:
+    balance = scraper.get_balance()
+    if balance is None:
+        balance = config.FALLBACK_BALANCE
+        if balance <= 0:
+            raise RuntimeError("Solde illisible et FALLBACK_BALANCE non défini.")
+        logger.warning("Solde illisible — utilisation du solde de secours: $%.2f", balance)
+    return balance
+
+
+def check_and_bet(scraper: MiseOJeuScraper) -> bool:
+    """
+    Vérifie les paris et place une mise si éligible.
+    Retourne True si au moins un pari a été traité.
+    """
+    balance = get_balance(scraper)
+    if balance <= 0:
+        logger.warning("Solde nul ($%.2f). Pas de mise possible.", balance)
+        return False
+
+    logger.info("Solde disponible: $%.2f", balance)
+    bets = scraper.fetch_available_bets()
+    eligible = filter_eligible_bets(bets, balance)
+    logger.info(summarize(eligible))
+
+    if not eligible:
+        return False
+
+    for bet in eligible:
+        success = scraper.place_bet(bet["id"], bet["bet_amount"])
+        status = "placé" if success else "ÉCHEC"
+        logger.info(
+            "Pari %s: %s | cote %.4f | $%.2f",
+            status, bet["description"][:60], bet["odds"], bet["bet_amount"],
+        )
+    return True
+
+
+def run_session(headless: bool = True, once: bool = False):
+    """
+    Ouvre le navigateur, se connecte, puis tourne en boucle.
+    Si aucun pari éligible: attend 5 min et revérifie (navigateur reste ouvert).
+    """
     scraper = MiseOJeuScraper()
     try:
         scraper.start(headless=headless)
 
         if not scraper.login():
-            logger.error("Impossible de se connecter. Cycle annulé.")
+            logger.error("Impossible de se connecter. Arrêt.")
             return
 
-        balance = scraper.get_balance()
-        if balance is None:
-            balance = config.FALLBACK_BALANCE
-            if balance <= 0:
-                logger.error("Solde illisible et FALLBACK_BALANCE non défini. Cycle annulé.")
-                return
-            logger.warning("Solde illisible — utilisation du solde de secours: $%.2f", balance)
-        elif balance <= 0:
-            logger.warning("Solde nul. Cycle annulé.")
-            return
+        while True:
+            try:
+                check_and_bet(scraper)
+            except RuntimeError as exc:
+                logger.error("%s", exc)
+                break
+            except Exception as exc:
+                logger.error("Erreur inattendue: %s", exc)
 
-        logger.info("Solde disponible: $%.2f", balance)
-        bets = scraper.fetch_available_bets()
-        eligible = filter_eligible_bets(bets, balance)
+            if once:
+                break
 
-        logger.info(summarize(eligible))
-
-        for bet in eligible:
-            success = scraper.place_bet(bet["id"], bet["bet_amount"])
-            status = "placé" if success else "ÉCHEC"
             logger.info(
-                "Pari %s: %s | cote %.4f | $%.2f",
-                status, bet["description"][:60], bet["odds"], bet["bet_amount"],
+                "Prochain contrôle dans %d minutes. Navigateur maintenu ouvert…",
+                RETRY_INTERVAL_SECONDS // 60,
             )
+            time.sleep(RETRY_INTERVAL_SECONDS)
 
+    except KeyboardInterrupt:
+        logger.info("Arrêt demandé par l'utilisateur.")
     finally:
         scraper.stop()
 
@@ -90,20 +124,7 @@ def main():
         config.MAX_ODDS, config.MAX_EVENT_HOURS, config.BET_FRACTION * 100,
     )
 
-    if args.once:
-        run_once(headless=headless)
-        return
-
-    # Boucle planifiée
-    logger.info("Vérification toutes les %d minutes.", config.CHECK_INTERVAL_MINUTES)
-    schedule.every(config.CHECK_INTERVAL_MINUTES).minutes.do(run_once, headless=headless)
-
-    # Premier cycle immédiat
-    run_once(headless=headless)
-
-    while True:
-        schedule.run_pending()
-        time.sleep(30)
+    run_session(headless=headless, once=args.once)
 
 
 if __name__ == "__main__":
