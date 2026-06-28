@@ -251,10 +251,8 @@ class MiseOJeuScraper:
         bets: list[dict] = []
         try:
             self.page.goto(config.MOJ_LIVE_URL, wait_until="domcontentloaded", timeout=30_000)
-            self.page.wait_for_timeout(2_500)
+            _wait_for_odds(self.page)
 
-            # Les onglets sont des boutons avec icônes (Soccer, Tennis, Golf…)
-            # Ils apparaissent généralement comme des boutons horizontaux avec texte court
             tabs = self.page.locator(
                 '[class*="tab"]:not([class*="betslip"]):not([class*="coupon"]), '
                 '[class*="sport-filter"] button, '
@@ -269,14 +267,13 @@ class MiseOJeuScraper:
                     name = _safe_text(tab)
                     try:
                         tab.click()
-                        self.page.wait_for_timeout(2_000)
+                        _wait_for_odds(self.page)
                         tab_bets = self._extract_from_current_page(is_live=True)
                         logger.info("  Onglet '%s': %d pari(s).", name, len(tab_bets))
                         bets.extend(tab_bets)
                     except Exception as exc:
                         logger.warning("  Onglet '%s' ignoré: %s", name, exc)
             else:
-                # Pas d'onglets trouvés: extraire la page telle quelle
                 bets = self._extract_from_current_page(is_live=True)
 
         except Exception as exc:
@@ -291,7 +288,7 @@ class MiseOJeuScraper:
         """
         try:
             self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
-            self.page.wait_for_timeout(2_000)
+            _wait_for_odds(self.page)
 
             links = self.page.locator('a[href*="/sports/fr/"]').all()
             results: list[tuple[str, str]] = []
@@ -330,7 +327,7 @@ class MiseOJeuScraper:
     def _extract_from_url(self, url: str, is_live: bool) -> list[dict]:
         try:
             self.page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            self.page.wait_for_timeout(2_000)
+            _wait_for_odds(self.page)
         except Exception as exc:
             logger.warning("Impossible de charger %s: %s", url, exc)
             return []
@@ -406,6 +403,43 @@ class MiseOJeuScraper:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+def _wait_for_odds(page, timeout: int = 20_000) -> None:
+    """
+    Attend que des boutons contenant des cotes (format X,XX ou X.XX)
+    soient visibles dans le DOM. Plus fiable qu'un délai fixe sur un SPA.
+    Fait défiler la page pour déclencher le chargement paresseux.
+    """
+    # Attendre que le réseau soit calme
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except PlaywrightTimeout:
+        pass
+
+    # Faire défiler pour déclencher le chargement paresseux (lazy loading)
+    try:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+        page.wait_for_timeout(800)
+        page.evaluate("window.scrollTo(0, 0)")
+    except Exception:
+        pass
+
+    # Attendre qu'au moins un bouton contenant une cote apparaisse
+    try:
+        page.wait_for_function(
+            """() => {
+                const re = /^\\d+[,.]\\d{2,4}$/;
+                return Array.from(document.querySelectorAll('button'))
+                    .some(b => b.innerText.trim().split('\\n')
+                        .some(l => re.test(l.trim())));
+            }""",
+            timeout=timeout,
+        )
+        logger.debug("Cotes détectées dans le DOM.")
+    except PlaywrightTimeout:
+        # Aucune cote visible après le délai — page vide ou hors-saison
+        logger.debug("Aucune cote détectée après %dms.", timeout)
+
 
 def _safe_text(locator) -> str:
     try:
