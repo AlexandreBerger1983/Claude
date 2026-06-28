@@ -139,27 +139,89 @@ class MiseOJeuScraper:
         return None
 
     def fetch_available_bets(self) -> list[dict]:
-        """Retourne les paris disponibles depuis la page sports."""
-        logger.info("Récupération des paris disponibles…")
-        self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
+        """
+        Récupère tous les paris disponibles en parcourant:
+          1. La section EN DIRECT (paris en cours)
+          2. Tous les onglets sports (SPORTS A-Z)
+        """
+        all_bets: list[dict] = []
+        seen_ids: set[str] = set()
 
-        bets = []
+        # Pages à visiter: EN DIRECT en premier, puis tous les onglets sports
+        pages_to_visit = [
+            (config.MOJ_LIVE_URL, "EN DIRECT"),
+            (config.MOJ_SPORTS_URL, "SPORTS (accueil)"),
+        ]
+
+        # Récupérer dynamiquement tous les liens de sports depuis le menu
+        sport_links = self._get_sport_tab_urls()
+        for name, url in sport_links:
+            pages_to_visit.append((url, name))
+
+        for url, label in pages_to_visit:
+            logger.info("Visite: %s (%s)", label, url)
+            bets = self._scrape_page(url)
+            new = 0
+            for bet in bets:
+                if bet["id"] not in seen_ids:
+                    seen_ids.add(bet["id"])
+                    all_bets.append(bet)
+                    new += 1
+            logger.info("  → %d nouveau(x) pari(s) trouvé(s) sur cette page.", new)
+
+        logger.info("Total: %d pari(s) uniques collectés sur %d page(s).",
+                    len(all_bets), len(pages_to_visit))
+        return all_bets
+
+    def _get_sport_tab_urls(self) -> list[tuple[str, str]]:
+        """Retourne la liste (nom, url) de tous les onglets sports du menu."""
         try:
+            self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
+            # Chercher tous les liens dans la barre de navigation Mise O Jeu+
+            nav_links = self.page.locator(
+                'nav a[href*="/sports/"], [class*="sport-menu"] a, [class*="nav-sport"] a'
+            ).all()
+            results = []
+            for link in nav_links:
+                href = link.get_attribute("href") or ""
+                name = link.inner_text(timeout=2_000).strip()
+                if not href or not name or name.upper() in ("EN DIRECT", "RÉSULTATS",
+                                                             "PROMOTIONS", "COMMENT JOUER",
+                                                             "GAGNANTS", "ZONE EXPERTS",
+                                                             "ACHETER EN MAGASIN", "SPORTS A-Z"):
+                    continue
+                full_url = href if href.startswith("http") else f"{config.MOJ_BASE_URL}{href}"
+                results.append((name, full_url))
+            logger.info("Onglets sports trouvés: %s", [n for n, _ in results])
+            return results
+        except Exception as exc:
+            logger.warning("Impossible de récupérer les onglets sports: %s", exc)
+            return []
+
+    def _scrape_page(self, url: str) -> list[dict]:
+        """Charge une URL et extrait tous les paris de la page."""
+        try:
+            self.page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             self.page.wait_for_selector(
                 '[class*="event"], [class*="match"], [class*="game"], [class*="selection"]',
-                timeout=20_000,
+                timeout=15_000,
             )
-            cards = self.page.locator(
-                '[class*="event-card"], [class*="match-card"], [class*="game-row"], [class*="event-row"]'
-            ).all()
-            logger.info("%d événements trouvés.", len(cards))
-            for card in cards:
-                bet = _parse_event_card(card)
-                if bet:
-                    bets.append(bet)
         except PlaywrightTimeout:
-            logger.warning("Délai dépassé lors de la récupération des paris.")
+            logger.warning("Aucun événement trouvé ou délai dépassé: %s", url)
+            return []
+        except Exception as exc:
+            logger.warning("Erreur lors du chargement de %s: %s", url, exc)
+            return []
 
+        cards = self.page.locator(
+            '[class*="event-card"], [class*="match-card"], [class*="game-row"], [class*="event-row"]'
+        ).all()
+
+        bets = []
+        for card in cards:
+            bet = _parse_event_card(card)
+            if bet:
+                bets.append(bet)
         return bets
 
     def place_bet(self, bet_id: str, amount: float) -> bool:

@@ -15,4 +15,5 @@ FALLBACK_BALANCE = float(os.getenv("FALLBACK_BALANCE", "0"))
 
 MOJ_BASE_URL = "https://miseojeuplus.espacejeux.com"
 MOJ_SPORTS_URL = f"{MOJ_BASE_URL}/sports/fr/"
+MOJ_LIVE_URL = f"{MOJ_BASE_URL}/sports/fr/live"
 MOJ_LOGIN_URL = f"{MOJ_BASE_URL}/sports/fr/"  # La connexion se fait via OAuth depuis le site principal
