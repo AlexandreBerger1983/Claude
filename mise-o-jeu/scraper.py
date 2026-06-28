@@ -67,9 +67,15 @@ class MiseOJeuScraper:
             self.page.fill('input[type="password"]', config.PASSWORD)
             self.page.click('button:has-text("Continuer"), button[type="submit"]')
 
-            # Attendre le retour sur le site principal
-            self.page.wait_for_url("**/espacejeux.com/**", timeout=30_000)
-            logger.info("Connexion réussie.")
+            # Attendre la redirection OAuth vers espacejeux.com (URL change suffit)
+            self.page.wait_for_url(
+                lambda url: "espacejeux.com" in url,
+                timeout=30_000,
+                wait_until="commit",
+            )
+            # Attendre que le DOM de base soit prêt
+            self.page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            logger.info("Connexion réussie. URL: %s", self.page.url)
             return True
 
         except PlaywrightTimeout as exc:
