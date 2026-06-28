@@ -1,9 +1,10 @@
 """
-Scraper Playwright pour miseojeu.com.
-Gère la connexion, la récupération du solde et la liste des paris disponibles.
+Scraper Playwright pour miseojeuplus.espacejeux.com.
+Connexion via OAuth Loto-Québec (connexion.lotoquebec.com).
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -45,35 +46,47 @@ class MiseOJeuScraper:
         if not config.USERNAME or not config.PASSWORD:
             raise ValueError("MOJ_USERNAME et MOJ_PASSWORD doivent être définis dans .env")
 
-        logger.info("Connexion à Mise O Jeu…")
-        self.page.goto(config.MOJ_LOGIN_URL, wait_until="networkidle")
+        logger.info("Chargement du site Mise O Jeu+…")
+        self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
 
         try:
-            self.page.fill('input[name="username"], input[id*="username"], input[type="email"]', config.USERNAME)
-            self.page.fill('input[name="password"], input[id*="password"], input[type="password"]', config.PASSWORD)
-            self.page.click('button[type="submit"], input[type="submit"]')
-            self.page.wait_for_load_state("networkidle", timeout=15_000)
-        except PlaywrightTimeout:
-            logger.error("Délai dépassé lors de la connexion.")
-            return False
+            # Cliquer sur le bouton "Connexion" en haut à droite
+            logger.info("Clic sur le bouton Connexion…")
+            self.page.click('a:has-text("Connexion"), button:has-text("Connexion")', timeout=15_000)
 
-        if "connexion" in self.page.url or "login" in self.page.url:
-            logger.error("Échec de la connexion — vérifiez vos identifiants.")
-            return False
+            # Attendre la page OAuth de Loto-Québec
+            self.page.wait_for_url("**/connexion.lotoquebec.com/**", timeout=20_000)
+            logger.info("Page OAuth Loto-Québec chargée.")
 
-        logger.info("Connexion réussie.")
-        return True
+            # Étape 1 : courriel ou nom d'utilisateur
+            self.page.fill('input[type="email"], input[name*="user"], input[id*="username"]', config.USERNAME, timeout=10_000)
+            self.page.click('button:has-text("Continuer"), button[type="submit"]')
+
+            # Étape 2 : mot de passe (parfois sur une deuxième page)
+            self.page.wait_for_selector('input[type="password"]', timeout=10_000)
+            self.page.fill('input[type="password"]', config.PASSWORD)
+            self.page.click('button:has-text("Continuer"), button[type="submit"]')
+
+            # Attendre le retour sur le site principal
+            self.page.wait_for_url("**/espacejeux.com/**", timeout=30_000)
+            logger.info("Connexion réussie.")
+            return True
+
+        except PlaywrightTimeout as exc:
+            logger.error("Délai dépassé lors de la connexion: %s", exc)
+            logger.error("URL courante: %s", self.page.url)
+            return False
+        except Exception as exc:
+            logger.error("Erreur lors de la connexion: %s", exc)
+            return False
 
     def get_balance(self) -> Optional[float]:
         """Retourne le solde du compte en dollars."""
         try:
-            self.page.goto(config.MOJ_BASE_URL, wait_until="networkidle")
-            # Le solde est affiché dans un élément contenant "$" ou "solde"
-            balance_el = self.page.locator(
-                '[class*="balance"], [class*="solde"], [data-testid*="balance"]'
-            ).first
-            balance_text = balance_el.inner_text(timeout=10_000)
-            balance = float(balance_text.replace("$", "").replace(",", ".").replace(" ", "").strip())
+            balance_text = self.page.locator(
+                '[class*="balance"], [class*="solde"], [class*="amount"], [data-testid*="balance"]'
+            ).first.inner_text(timeout=10_000)
+            balance = float(re.sub(r'[^\d.]', '', balance_text.replace(",", ".")))
             logger.info("Solde: $%.2f", balance)
             return balance
         except Exception as exc:
@@ -81,87 +94,72 @@ class MiseOJeuScraper:
             return None
 
     def fetch_available_bets(self) -> list[dict]:
-        """
-        Retourne la liste de tous les paris disponibles sous forme de dicts:
-        {
-            'id': str,
-            'description': str,
-            'odds': float,          # cote décimale (ex: 1.015)
-            'event_start': datetime,
-            'event_end': datetime,  # None si inconnu
-            'sport': str,
-        }
-        """
+        """Retourne les paris disponibles depuis la page sports."""
         logger.info("Récupération des paris disponibles…")
-        self.page.goto(config.MOJ_SPORTS_URL, wait_until="networkidle")
+        self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
 
         bets = []
         try:
-            # Attendre que les éléments de paris soient chargés
-            self.page.wait_for_selector('[class*="event"], [class*="match"], [class*="game"]', timeout=15_000)
-
-            event_cards = self.page.locator('[class*="event-card"], [class*="match-card"], [class*="game-row"]').all()
-            logger.info("%d événements trouvés.", len(event_cards))
-
-            for card in event_cards:
+            self.page.wait_for_selector(
+                '[class*="event"], [class*="match"], [class*="game"], [class*="selection"]',
+                timeout=20_000,
+            )
+            cards = self.page.locator(
+                '[class*="event-card"], [class*="match-card"], [class*="game-row"], [class*="event-row"]'
+            ).all()
+            logger.info("%d événements trouvés.", len(cards))
+            for card in cards:
                 bet = _parse_event_card(card)
                 if bet:
                     bets.append(bet)
-
         except PlaywrightTimeout:
             logger.warning("Délai dépassé lors de la récupération des paris.")
 
         return bets
 
     def place_bet(self, bet_id: str, amount: float) -> bool:
-        """
-        Place un pari. En mode DRY_RUN, simule seulement.
-        Retourne True si le pari a été placé avec succès.
-        """
         if config.DRY_RUN:
             logger.info("[DRY_RUN] Pari simulé: id=%s montant=$%.2f", bet_id, amount)
             return True
 
         logger.info("Placement du pari: id=%s montant=$%.2f", bet_id, amount)
         try:
-            # Cliquer sur la cote pour l'ajouter au coupon
-            odds_btn = self.page.locator(f'[data-event-id="{bet_id}"] [class*="odds"], [data-id="{bet_id}"]').first
+            odds_btn = self.page.locator(
+                f'[data-event-id="{bet_id}"] [class*="odds"], [data-id="{bet_id}"]'
+            ).first
             odds_btn.click()
 
-            # Remplir le montant dans le coupon de paris
             self.page.wait_for_selector('[class*="betslip"], [class*="coupon"]', timeout=10_000)
-            amount_input = self.page.locator('[class*="betslip"] input[type="number"], [class*="coupon"] input[type="number"]').first
+            amount_input = self.page.locator(
+                '[class*="betslip"] input[type="number"], [class*="coupon"] input[type="number"]'
+            ).first
             amount_input.fill(str(round(amount, 2)))
 
-            # Confirmer le pari
-            confirm_btn = self.page.locator('[class*="betslip"] button[class*="confirm"], [class*="coupon"] button[class*="place"]').first
+            confirm_btn = self.page.locator(
+                '[class*="betslip"] button[class*="confirm"], [class*="coupon"] button[class*="place"]'
+            ).first
             confirm_btn.click()
             self.page.wait_for_load_state("networkidle", timeout=10_000)
 
             logger.info("Pari placé avec succès.")
             return True
-
         except Exception as exc:
             logger.error("Erreur lors du placement du pari: %s", exc)
             return False
 
 
 def _parse_event_card(card) -> Optional[dict]:
-    """Extrait les informations d'une carte d'événement Playwright."""
     try:
         text = card.inner_text()
 
-        # Extraire la cote — cherche un nombre décimal entre 1.00 et 2.00
-        import re
         odds_matches = re.findall(r'\b(1\.\d{2,4}|[12]\.\d{2,4})\b', text)
         if not odds_matches:
             return None
         odds = float(odds_matches[0])
 
-        # Extraire la date/heure de début (format québécois: "28 juin 2026 20:00")
         date_match = re.search(
             r'(\d{1,2})\s+(janv|févr|mars|avr|mai|juin|juil|août|sept|oct|nov|déc)[a-z]*\.?\s+(\d{4})[\s,]+(\d{1,2}):(\d{2})',
-            text, re.IGNORECASE
+            text, re.IGNORECASE,
         )
         if not date_match:
             return None
@@ -171,26 +169,28 @@ def _parse_event_card(card) -> Optional[dict]:
             'juin': 6, 'juil': 7, 'août': 8, 'sept': 9, 'oct': 10,
             'nov': 11, 'déc': 12,
         }
-        day = int(date_match.group(1))
-        month = month_map.get(date_match.group(2).lower()[:4].rstrip('.'), 1)
-        year = int(date_match.group(3))
-        hour = int(date_match.group(4))
-        minute = int(date_match.group(5))
-        event_start = datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+        event_start = datetime(
+            int(date_match.group(3)),
+            month_map.get(date_match.group(2).lower()[:4].rstrip('.'), 1),
+            int(date_match.group(1)),
+            int(date_match.group(4)),
+            int(date_match.group(5)),
+            tzinfo=timezone.utc,
+        )
 
-        # ID unique — tenter data-event-id sinon utiliser le texte haché
-        event_id = card.get_attribute("data-event-id") or card.get_attribute("data-id") or str(hash(text[:80]))
-
-        description = text[:100].strip().replace("\n", " ")
+        event_id = (
+            card.get_attribute("data-event-id")
+            or card.get_attribute("data-id")
+            or str(hash(text[:80]))
+        )
 
         return {
             "id": event_id,
-            "description": description,
+            "description": text[:100].strip().replace("\n", " "),
             "odds": odds,
             "event_start": event_start,
             "event_end": None,
             "sport": "inconnu",
         }
-
     except Exception:
         return None
