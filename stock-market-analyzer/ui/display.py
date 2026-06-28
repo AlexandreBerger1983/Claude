@@ -169,27 +169,27 @@ def print_ai_analysis(analysis: str, ticker: str):
 
 
 def print_screener_table(results: list[ScreenerResult], title: str):
-    t = Table(title=f"[bold]{title}[/bold]", box=box.ROUNDED, expand=True)
-    t.add_column("Ticker",   style="bold cyan", width=8)
-    t.add_column("Nom",      width=22)
-    t.add_column("Prix",     width=10)
-    t.add_column("Score",    width=8)
-    t.add_column("Tech",     width=7)
-    t.add_column("Fund",     width=7)
-    t.add_column("Mom",      width=7)
-    t.add_column("Tendance", width=16)
-    t.add_column("RSI",      width=6)
-    t.add_column("1M %",     width=8)
-    t.add_column("1Y %",     width=8)
-    t.add_column("Upside",   width=8)
-    t.add_column("Verdict",  width=12)
+    t = Table(title=f"[bold]{title}[/bold]", box=box.SIMPLE_HEAVY, expand=True)
+    t.add_column("Ticker",    style="bold cyan",  min_width=6,  no_wrap=True)
+    t.add_column("Nom",                           ratio=2)
+    t.add_column("Prix",                          min_width=8,  no_wrap=True)
+    t.add_column("Score",                         min_width=5,  no_wrap=True)
+    t.add_column("Tech",                          min_width=4,  no_wrap=True)
+    t.add_column("Fund",                          min_width=4,  no_wrap=True)
+    t.add_column("Mom",                           min_width=4,  no_wrap=True)
+    t.add_column("Tendance",                      min_width=13, no_wrap=True)
+    t.add_column("RSI",                           min_width=4,  no_wrap=True)
+    t.add_column("1M %",                          min_width=7,  no_wrap=True)
+    t.add_column("1Y %",                          min_width=7,  no_wrap=True)
+    t.add_column("Upside",                        min_width=7,  no_wrap=True)
+    t.add_column("Verdict",                       min_width=10, no_wrap=True)
 
     for r in results:
         sc = score_color(r.combined_score)
         trend_col = "green" if "HAUSSIER" in r.trend else "red" if "BAISSIER" in r.trend else "yellow"
         t.add_row(
             r.ticker,
-            r.name[:20],
+            r.name,
             f"${r.price:.2f}",
             f"[{sc}]{r.combined_score:+.0f}[/{sc}]",
             f"[{score_color(r.tech_score)}]{r.tech_score:+.0f}[/{score_color(r.tech_score)}]",
@@ -208,25 +208,23 @@ def print_screener_table(results: list[ScreenerResult], title: str):
 
 def print_shorts_table(shorts: list[ScreenerResult]):
     t = Table(title="[bold red]Meilleures Opportunités de Vente à Découvert (Short)[/bold red]",
-              box=box.ROUNDED, expand=True)
-    t.add_column("Ticker",  style="bold red", width=8)
-    t.add_column("Nom",     width=22)
-    t.add_column("Prix",    width=10)
-    t.add_column("Score",   width=8)
-    t.add_column("RSI",     width=6)
-    t.add_column("BB%",     width=6)
-    t.add_column("1M %",    width=8)
-    t.add_column("P/E",     width=8)
-    t.add_column("Raisons Short", width=50)
+              box=box.SIMPLE_HEAVY, expand=True)
+    t.add_column("Ticker",        style="bold red", min_width=6,  no_wrap=True)
+    t.add_column("Nom",                             ratio=1)
+    t.add_column("Prix",                            min_width=8,  no_wrap=True)
+    t.add_column("Score",                           min_width=5,  no_wrap=True)
+    t.add_column("RSI",                             min_width=4,  no_wrap=True)
+    t.add_column("1M %",                            min_width=7,  no_wrap=True)
+    t.add_column("P/E",                             min_width=5,  no_wrap=True)
+    t.add_column("Raisons Short",                   ratio=3)
 
     for r in shorts:
         t.add_row(
             r.ticker,
-            r.name[:20],
+            r.name,
             f"${r.price:.2f}",
             f"[{score_color(r.combined_score)}]{r.combined_score:+.0f}[/{score_color(r.combined_score)}]",
             f"[red]{r.rsi:.0f}[/red]" if r.rsi > 70 else f"{r.rsi:.0f}",
-            "",
             f"[{pct_color(r.return_1m)}]{r.return_1m:+.1f}%[/{pct_color(r.return_1m)}]",
             f"{r.pe:.0f}" if r.pe else "N/A",
             f"[yellow]{r.short_reason}[/yellow]",
