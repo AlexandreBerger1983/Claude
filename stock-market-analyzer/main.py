@@ -3,6 +3,8 @@
 Stock Market Analyzer — Analyse technique, fondamentale & IA
 Usage:
   python main.py                          # Menu interactif
+  python main.py --top                    # TOP 5 achats + shorts du moment
+  python main.py --top --list TECH        # TOP 5 sur le secteur tech
   python main.py --analyze AAPL           # Analyse complète d'un titre
   python main.py --analyze AAPL MSFT NVDA # Analyse multiple
   python main.py --screen                 # Screener S&P500 Top 20
@@ -35,6 +37,10 @@ from ui.display import (
     console, print_header, print_technical, print_fundamental,
     print_momentum, print_ai_analysis, print_screener_table,
     print_shorts_table,
+)
+from ui.recommendations import (
+    build_recommendation, print_top_recommendations,
+    print_shorts_recommendations, print_summary_table,
 )
 
 try:
@@ -201,55 +207,55 @@ def interactive_menu():
 
     while True:
         console.print(Panel(
-            "[1] Analyser un/des titre(s)\n"
-            "[2] Screener — Meilleures opportunités long\n"
-            "[3] Screener — Meilleures opportunités short\n"
-            "[4] Analyse comparative (plusieurs titres)\n"
-            "[5] Choisir une watchlist\n"
+            "[bold green][1] TOP 5 — Quoi acheter maintenant (recommandé)[/bold green]\n"
+            "[2] Analyser un titre en détail\n"
+            "[3] Screener — Tableau complet\n"
+            "[4] Meilleures opportunités short\n"
+            "[5] Comparer plusieurs titres\n"
+            "[6] Choisir une watchlist\n"
             "[Q] Quitter",
             title="[bold cyan]MENU PRINCIPAL[/bold cyan]",
             box=box.ROUNDED,
             expand=False,
         ))
 
-        choice = Prompt.ask("[bold cyan]Choix[/bold cyan]", choices=["1","2","3","4","5","q","Q"], default="1")
+        choice = Prompt.ask("[bold cyan]Choix[/bold cyan]", choices=["1","2","3","4","5","6","q","Q"], default="1")
 
         if choice in ("q", "Q"):
             console.print("[dim]À bientôt![/dim]")
             break
 
         elif choice == "1":
+            list_name = _choose_watchlist()
+            mode = Prompt.ask("Horizon", choices=["short","medium","long"], default="short")
+            run_top_picks(list_name=list_name, mode=mode)
+
+        elif choice == "2":
             ticker_input = Prompt.ask("[bold]Ticker(s) (ex: AAPL ou AAPL,MSFT,NVDA)[/bold]")
             tickers = [t.strip().upper() for t in ticker_input.replace(" ", ",").split(",") if t.strip()]
-
-            mode = Prompt.ask(
-                "[bold]Horizon[/bold]",
-                choices=["short", "medium", "long"],
-                default="short",
-            )
+            mode = Prompt.ask("[bold]Horizon[/bold]", choices=["short", "medium", "long"], default="short")
             use_ai = Prompt.ask("[bold]Analyse IA?[/bold]", choices=["o","n"], default="o") == "o"
-
             for t in tickers:
                 analyze_ticker(t, mode=mode, use_ai=use_ai)
                 if len(tickers) > 1:
                     console.print("\n" + "─" * 80 + "\n")
 
-        elif choice == "2":
+        elif choice == "3":
             list_name = _choose_watchlist()
             mode = Prompt.ask("Horizon", choices=["short","medium","long"], default="short")
             run_screener(list_name=list_name, mode=mode, include_shorts=False)
 
-        elif choice == "3":
+        elif choice == "4":
             list_name = _choose_watchlist()
             run_shorts_screener(list_name=list_name)
 
-        elif choice == "4":
+        elif choice == "5":
             ticker_input = Prompt.ask("[bold]Titres à comparer (ex: AAPL,MSFT,GOOGL)[/bold]")
             tickers = [t.strip().upper() for t in ticker_input.replace(" ", ",").split(",") if t.strip()]
             mode = Prompt.ask("Horizon", choices=["short","medium","long"], default="short")
             compare_tickers(tickers, mode)
 
-        elif choice == "5":
+        elif choice == "6":
             list_name = _choose_watchlist()
             mode = Prompt.ask("Horizon", choices=["short","medium","long"], default="short")
             run_screener(list_name=list_name, mode=mode)
@@ -348,6 +354,102 @@ def compare_tickers(tickers: list[str], mode: str = "short"):
 
 
 # ─────────────────────────────────────────
+# TOP PICKS — the clear "what to buy now"
+# ─────────────────────────────────────────
+
+def run_top_picks(list_name: str = "SP500_TOP", mode: str = "short", top_n: int = 5):
+    tickers = WATCHLISTS.get(list_name.upper(), WATCHLISTS["SP500_TOP"])
+    tf = TIMEFRAMES[mode]
+
+    console.print(f"\n[bold cyan]Scan de {len(tickers)} titres — {list_name} | {tf['label']}[/bold cyan]")
+
+    with Progress(
+        SpinnerColumn(), TextColumn("[cyan]{task.description}"),
+        BarColumn(), TaskProgressColumn(), transient=True,
+    ) as prog:
+        task = prog.add_task("Analyse en cours...", total=len(tickers))
+
+        all_data = []
+        for ticker in tickers:
+            prog.update(task, advance=1, description=f"Analyse {ticker}...")
+            df    = fetch_history(ticker, period=tf["period"], interval=tf["interval"])
+            df_1y = fetch_history(ticker, period="1y", interval="1d")
+            if df is None:
+                continue
+            tech = compute_technical(ticker, df)
+            fund = compute_fundamental(ticker)
+            mom  = compute_momentum(ticker, df_1y if df_1y is not None else df)
+            combined = (
+                tech.score * WEIGHTS["technical"]
+                + fund.score * WEIGHTS["fundamental"]
+                + mom.score  * WEIGHTS["momentum"]
+            )
+            all_data.append((ticker, tech, fund, mom, combined))
+
+    # Sort by combined score
+    all_data.sort(key=lambda x: x[4], reverse=True)
+
+    # Build long recommendations (top N)
+    long_recs = []
+    for ticker, tech, fund, mom, combined in all_data[:top_n]:
+        rec = build_recommendation(
+            ticker=ticker,
+            name=fund.name or ticker,
+            price=tech.price,
+            tech_score=tech.score,
+            fund_score=fund.score,
+            mom_score=mom.score,
+            combined=combined,
+            rsi=tech.rsi,
+            atr=tech.atr,
+            bb_lower=tech.bb_lower,
+            bb_upper=tech.bb_upper,
+            sma_20=tech.sma_20,
+            target_analyst=fund.analyst_target,
+            tech_signals=tech.signals,
+            fund_signals=fund.signals,
+            mom_signals=mom.signals,
+            mode=mode,
+        )
+        long_recs.append(rec)
+
+    # Build short recommendations (bottom N by score)
+    short_candidates = [d for d in all_data if d[4] < 0][:3]
+    short_recs = []
+    for ticker, tech, fund, mom, combined in short_candidates:
+        from strategies.screener import is_short_candidate
+        flag, reason = is_short_candidate(tech, mom, fund)
+        if flag:
+            rec = build_recommendation(
+                ticker=ticker,
+                name=fund.name or ticker,
+                price=tech.price,
+                tech_score=tech.score,
+                fund_score=fund.score,
+                mom_score=mom.score,
+                combined=combined,
+                rsi=tech.rsi,
+                atr=tech.atr,
+                bb_lower=tech.bb_lower,
+                bb_upper=tech.bb_upper,
+                sma_20=tech.sma_20,
+                target_analyst=fund.analyst_target,
+                tech_signals=[reason],
+                fund_signals=fund.signals,
+                mom_signals=mom.signals,
+                mode=mode,
+                is_short_candidate=True,
+            )
+            short_recs.append(rec)
+
+    print_top_recommendations(long_recs, title=f"TOP {top_n} ACHATS — {list_name} | {tf['label']}")
+    print_summary_table(long_recs)
+
+    if short_recs:
+        print_shorts_recommendations(short_recs)
+
+
+# ─────────────────────────────────────────
 # CLI entry point
 # ─────────────────────────────────────────
 
@@ -357,10 +459,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    parser.add_argument("--top",     "-t", action="store_true",
+                        help="TOP 5 achats du moment + shorts (vue claire et actionnable)")
     parser.add_argument("--analyze", "-a", nargs="+", metavar="TICKER",
                         help="Analyser un ou plusieurs titres")
     parser.add_argument("--screen",  "-s", action="store_true",
-                        help="Lancer le screener")
+                        help="Lancer le screener (tableau détaillé)")
     parser.add_argument("--shorts",  action="store_true",
                         help="Screener pour opportunités short")
     parser.add_argument("--compare", "-c", nargs="+", metavar="TICKER",
@@ -377,7 +481,9 @@ def main():
 
     print_header()
 
-    if args.analyze:
+    if args.top:
+        run_top_picks(list_name=args.list, mode=args.mode)
+    elif args.analyze:
         for ticker in args.analyze:
             analyze_ticker(ticker, mode=args.mode, use_ai=not args.no_ai)
     elif args.screen:
