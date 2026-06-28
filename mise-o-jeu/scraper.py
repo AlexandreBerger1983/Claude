@@ -26,6 +26,7 @@ class MiseOJeuScraper:
         context = self._browser.new_context(
             locale="fr-CA",
             timezone_id="America/Montreal",
+            ignore_https_errors=True,
         )
         self.page = context.new_page()
         logger.info("Navigateur démarré.")
