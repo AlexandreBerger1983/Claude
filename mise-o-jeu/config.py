@@ -11,6 +11,7 @@ MAX_EVENT_HOURS = int(os.getenv("MAX_EVENT_HOURS", "24"))
 BET_FRACTION = float(os.getenv("BET_FRACTION", "0.50"))
 CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "15"))
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+FALLBACK_BALANCE = float(os.getenv("FALLBACK_BALANCE", "0"))
 
 MOJ_BASE_URL = "https://miseojeuplus.espacejeux.com"
 MOJ_SPORTS_URL = f"{MOJ_BASE_URL}/sports/fr/"

@@ -88,16 +88,55 @@ class MiseOJeuScraper:
 
     def get_balance(self) -> Optional[float]:
         """Retourne le solde du compte en dollars."""
+        # Attendre que la session soit bien établie après la redirection OAuth
         try:
-            balance_text = self.page.locator(
-                '[class*="balance"], [class*="solde"], [class*="amount"], [data-testid*="balance"]'
-            ).first.inner_text(timeout=10_000)
-            balance = float(re.sub(r'[^\d.]', '', balance_text.replace(",", ".")))
-            logger.info("Solde: $%.2f", balance)
-            return balance
-        except Exception as exc:
-            logger.warning("Impossible de lire le solde: %s", exc)
-            return None
+            self.page.wait_for_load_state("networkidle", timeout=20_000)
+        except PlaywrightTimeout:
+            pass
+
+        # Essayer plusieurs sélecteurs courants du site espacejeux
+        selectors = [
+            '[class*="wallet"]',
+            '[class*="credit"]',
+            '[class*="funds"]',
+            '[class*="balance"]',
+            '[class*="solde"]',
+            '[class*="amount"]',
+            # Le solde apparaît dans le header sous forme "20,00 $"
+            'header [class*="money"]',
+            'header [class*="cash"]',
+        ]
+        for sel in selectors:
+            try:
+                el = self.page.locator(sel).first
+                text = el.inner_text(timeout=3_000).strip()
+                if not text:
+                    continue
+                # Normaliser: "20,00 $" → "20.00"
+                normalized = re.sub(r'[^\d,.]', '', text).replace(",", ".")
+                if normalized:
+                    balance = float(normalized)
+                    logger.info("Solde: $%.2f (sélecteur: %s)", balance, sel)
+                    return balance
+            except Exception:
+                continue
+
+        # Recherche par contenu texte: trouver l'élément qui contient "$ XX"
+        try:
+            amount_els = self.page.locator('text=/\\d+[,.]\\d+\\s*\\$|\\$\\s*\\d+[,.]\\d+/').all()
+            for el in amount_els:
+                text = el.inner_text(timeout=2_000).strip()
+                normalized = re.sub(r'[^\d,.]', '', text).replace(",", ".")
+                if normalized:
+                    balance = float(normalized)
+                    if 0 < balance < 100_000:
+                        logger.info("Solde trouvé par texte: $%.2f", balance)
+                        return balance
+        except Exception:
+            pass
+
+        logger.warning("Impossible de lire le solde automatiquement.")
+        return None
 
     def fetch_available_bets(self) -> list[dict]:
         """Retourne les paris disponibles depuis la page sports."""

@@ -45,8 +45,14 @@ def run_once(headless: bool = True):
             return
 
         balance = scraper.get_balance()
-        if balance is None or balance <= 0:
-            logger.warning("Solde indisponible ou nul ($%.2f). Cycle annulé.", balance or 0)
+        if balance is None:
+            balance = config.FALLBACK_BALANCE
+            if balance <= 0:
+                logger.error("Solde illisible et FALLBACK_BALANCE non défini. Cycle annulé.")
+                return
+            logger.warning("Solde illisible — utilisation du solde de secours: $%.2f", balance)
+        elif balance <= 0:
+            logger.warning("Solde nul. Cycle annulé.")
             return
 
         logger.info("Solde disponible: $%.2f", balance)
