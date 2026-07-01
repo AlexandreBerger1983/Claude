@@ -81,11 +81,22 @@ camera:
   framerate: 15
   stream_quality: 75   # qualité JPEG 0-100
 
-# --- GPS (optionnel) ---
+# --- GPS RTK (u-blox ZED-F9P) ---
 gps:
-  enabled: false
-  port: "/dev/ttyS0"
-  baud: 9600
+  enabled: true
+  port: "/dev/ttyUSB0"      # ou /dev/ttyACM0 selon le câble USB
+  baud: 115200
+
+  # Corrections NTRIP via internet (gratuit au Canada - NRCAN)
+  ntrip:
+    enabled: true
+    host: "rtk2go.com"       # serveur NTRIP public
+    port: 2101
+    # Trouver le mountpoint le plus proche sur : http://rtk2go.com:2101/SNIP::STATUS
+    # Au Québec, essayer : MANA, JOIE, LAVI, MTL1...
+    mountpoint: "MTL1"
+    user: "votre@email.com"  # s'enregistrer gratuitement sur rtk2go.com
+    password: ""
 
 # --- Serveur web ---
 web:

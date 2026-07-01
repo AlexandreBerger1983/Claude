@@ -6,6 +6,8 @@ from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 
 from src.control import Robot, MowingController
+from src.control.mowing_gps import GPSMowingController
+from src.hardware.gps_rtk import GPSRTKModule
 from src.utils import get_config, logger
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -13,19 +15,40 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
 
 _robot: Robot | None = None
 _mowing: MowingController | None = None
+_gps: GPSRTKModule | None = None
+_mowing_gps: GPSMowingController | None = None
 
 
 def init_robot():
-    global _robot, _mowing
+    global _robot, _mowing, _gps, _mowing_gps
+    cfg = get_config()
     _robot = Robot()
-    _mowing = MowingController(_robot, get_config()["mowing"])
+    _mowing = MowingController(_robot, cfg["mowing"])
+
+    if cfg.get("gps", {}).get("enabled"):
+        _gps = GPSRTKModule(cfg["gps"])
+        _gps.start()
+        _mowing_gps = GPSMowingController(_robot, _gps)
+        logger.info("GPS RTK activé")
+    else:
+        logger.info("GPS RTK désactivé (config gps.enabled: false)")
 
 
 def _status_broadcast():
     """Envoie l'état du robot à tous les clients toutes les 200 ms."""
     while True:
         if _robot:
-            socketio.emit("status", _robot.status)
+            status = _robot.status
+            if _gps:
+                pos = _gps.position
+                status["gps"] = {
+                    "lat": pos.lat, "lon": pos.lon, "alt": pos.alt,
+                    "status": pos.status.name, "hdop": pos.hdop,
+                    "satellites": pos.satellites, "heading": pos.heading,
+                }
+            if _mowing_gps:
+                status["gps_mowing"] = _mowing_gps.progress
+            socketio.emit("status", status)
         time.sleep(0.2)
 
 
@@ -36,6 +59,11 @@ def _status_broadcast():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/zone")
+def zone_editor():
+    return render_template("zone_editor.html")
 
 
 @app.route("/api/status")
@@ -105,6 +133,39 @@ def on_mow_start():
 def on_mow_stop():
     if _mowing:
         _mowing.stop()
+
+
+@socketio.on("mow_gps_start")
+def on_mow_gps_start():
+    if not _mowing_gps:
+        emit("error", {"msg": "GPS RTK non activé dans la configuration"})
+        return
+    ok = _mowing_gps.start()
+    emit("mow_gps_state", {"state": _mowing_gps.state, "started": ok})
+
+
+@socketio.on("mow_gps_stop")
+def on_mow_gps_stop():
+    if _mowing_gps:
+        _mowing_gps.stop()
+
+
+@socketio.on("get_gps")
+def on_get_gps():
+    if _gps:
+        pos = _gps.position
+        emit("gps_position", {"lat": pos.lat, "lon": pos.lon, "status": pos.status.name})
+    else:
+        emit("gps_position", {"lat": None, "lon": None, "status": "DISABLED"})
+
+
+@socketio.on("save_zone")
+def on_save_zone(data):
+    if _mowing_gps:
+        _mowing_gps.save_zone(data.get("boundary", []))
+        emit("zone_saved", {})
+    else:
+        emit("error", {"msg": "GPS non disponible"})
 
 
 @socketio.on("emergency_stop")

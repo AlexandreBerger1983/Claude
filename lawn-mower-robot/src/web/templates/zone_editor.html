@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Johnny-Mow - Définir la zone de tonte</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    #map { height: 60vh; border-radius: 12px; border: 2px solid var(--border); }
+    .zone-toolbar { display:flex; gap:10px; flex-wrap:wrap; padding: 12px 0; }
+    #zone-info { background: var(--surface2); border-radius:8px; padding:12px; font-size:0.85rem; }
+    .gps-badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:0.75rem; font-weight:700; }
+    .badge-fix    { background:#16a34a33; color:#4ade80; }
+    .badge-float  { background:#d9770633; color:#f59e0b; }
+    .badge-nofix  { background:#dc262633; color:#ef4444; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🗺️ Zone de tonte GPS</h1>
+    <a href="/" style="color:var(--accent2);text-decoration:none;">← Retour au contrôle</a>
+  </header>
+
+  <main style="display:block; padding:16px;">
+    <div class="panel">
+      <h2>Tracé de la zone</h2>
+      <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:8px;">
+        Cliquer sur la carte pour ajouter des points. Fermer le polygone pour définir la zone de tonte.
+      </p>
+
+      <div id="map"></div>
+
+      <div class="zone-toolbar">
+        <button id="btn-use-gps" class="btn-success">📍 Ajouter position actuelle</button>
+        <button id="btn-undo"    class="btn-warning">↩ Annuler dernier point</button>
+        <button id="btn-clear"   class="btn-danger">🗑 Effacer tout</button>
+        <button id="btn-save"    class="btn-success btn-large">💾 Sauvegarder la zone</button>
+      </div>
+
+      <div id="zone-info">
+        <strong>GPS actuel :</strong>
+        <span id="gps-lat">—</span>, <span id="gps-lon">—</span>
+        &nbsp;<span id="gps-badge" class="gps-badge badge-nofix">Pas de fix</span>
+        &nbsp;| Satellites : <span id="gps-sats">—</span>
+        &nbsp;| HDOP : <span id="gps-hdop">—</span>
+        <br><br>
+        <strong>Zone :</strong> <span id="zone-points">0</span> points
+        &nbsp;| Surface estimée : <span id="zone-area">—</span> m²
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px;">
+      <h2>Tonte GPS RTK</h2>
+      <div id="gps-mow-status" style="margin-bottom:12px; color:var(--text-muted);">—</div>
+      <div class="progress-bar" style="background:var(--surface2);border-radius:8px;height:12px;margin-bottom:12px;">
+        <div id="progress-fill" style="background:var(--accent);height:12px;border-radius:8px;width:0%;transition:width 0.5s;"></div>
+      </div>
+      <div class="btn-row">
+        <button id="btn-mow-gps-start" class="btn-success btn-large">🛰 Lancer tonte GPS</button>
+        <button id="btn-mow-gps-stop"  class="btn-danger">⏹ Arrêter</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    // --- Carte Leaflet ---
+    const map = L.map("map").setView([45.5017, -73.5673], 18);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap",
+      maxZoom: 22,
+    }).addTo(map);
+
+    let points = [];
+    let polygon = null;
+    let robotMarker = null;
+
+    function redrawPolygon() {
+      if (polygon) map.removeLayer(polygon);
+      if (points.length >= 3) {
+        polygon = L.polygon(points, { color: "#4ade80", fillOpacity: 0.15 }).addTo(map);
+        document.getElementById("zone-area").textContent = Math.round(polygon.getLatLngs()[0].reduce((a,b,i,arr) => {
+          const next = arr[(i+1) % arr.length];
+          return a + (b.lat + next.lat) * (b.lng - next.lng);
+        }, 0) * 6371000 * 6371000 * Math.PI / 180 / 180);
+      }
+      document.getElementById("zone-points").textContent = points.length;
+    }
+
+    map.on("click", e => {
+      points.push([e.latlng.lat, e.latlng.lng]);
+      L.circleMarker([e.latlng.lat, e.latlng.lng], {radius:6, color:"#4ade80"}).addTo(map);
+      redrawPolygon();
+    });
+
+    document.getElementById("btn-use-gps").addEventListener("click", () => {
+      socket.emit("get_gps");
+    });
+    socket.on("gps_position", data => {
+      if (data.lat && data.lon) {
+        points.push([data.lat, data.lon]);
+        map.setView([data.lat, data.lon], 20);
+        L.circleMarker([data.lat, data.lon], {radius:6, color:"#60a5fa"}).addTo(map);
+        redrawPolygon();
+      }
+    });
+
+    document.getElementById("btn-undo").addEventListener("click", () => {
+      points.pop();
+      redrawPolygon();
+    });
+    document.getElementById("btn-clear").addEventListener("click", () => {
+      points = [];
+      if (polygon) { map.removeLayer(polygon); polygon = null; }
+      document.getElementById("zone-area").textContent = "—";
+      document.getElementById("zone-points").textContent = "0";
+    });
+
+    document.getElementById("btn-save").addEventListener("click", () => {
+      if (points.length < 3) { alert("Ajouter au moins 3 points pour définir la zone."); return; }
+      const boundary = points.map(([lat, lon]) => ({ lat, lon }));
+      socket.emit("save_zone", { boundary });
+    });
+    socket.on("zone_saved", () => alert("Zone sauvegardée ! Le robot connaît maintenant sa zone de tonte."));
+
+    // --- Statut GPS ---
+    socket.on("status", data => {
+      const gps = data.gps || {};
+      document.getElementById("gps-lat").textContent  = (gps.lat  || 0).toFixed(7);
+      document.getElementById("gps-lon").textContent  = (gps.lon  || 0).toFixed(7);
+      document.getElementById("gps-sats").textContent = gps.satellites || "—";
+      document.getElementById("gps-hdop").textContent = gps.hdop || "—";
+
+      const badge = document.getElementById("gps-badge");
+      if (gps.status === "RTK_FIX")   { badge.textContent = "RTK Fix ✓";  badge.className = "gps-badge badge-fix"; }
+      else if (gps.status === "RTK_FLOAT") { badge.textContent = "RTK Float"; badge.className = "gps-badge badge-float"; }
+      else { badge.textContent = gps.status || "Pas de fix"; badge.className = "gps-badge badge-nofix"; }
+
+      // Déplacer le marqueur robot
+      if (gps.lat && gps.lon) {
+        if (!robotMarker) {
+          robotMarker = L.marker([gps.lat, gps.lon], {
+            icon: L.divIcon({ html:"🤖", iconSize:[24,24], className:"" })
+          }).addTo(map);
+        } else {
+          robotMarker.setLatLng([gps.lat, gps.lon]);
+        }
+      }
+
+      // Progression tonte GPS
+      const prog = data.gps_mowing || {};
+      document.getElementById("gps-mow-status").textContent =
+        `${prog.state || "—"} | Bande ${prog.strips_done || 0} | Waypoint ${prog.waypoint || 0}/${prog.total_waypoints || 0}`;
+      document.getElementById("progress-fill").style.width = (prog.progress_pct || 0) + "%";
+    });
+
+    document.getElementById("btn-mow-gps-start").addEventListener("click", () => socket.emit("mow_gps_start"));
+    document.getElementById("btn-mow-gps-stop").addEventListener("click",  () => socket.emit("mow_gps_stop"));
+  </script>
+</body>
+</html>
