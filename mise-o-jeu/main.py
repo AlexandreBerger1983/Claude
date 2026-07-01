@@ -5,9 +5,14 @@ Se connecte une fois, puis vérifie les paris toutes les 5 minutes
 sans fermer le navigateur. Le navigateur reste ouvert entre les cycles.
 
 Usage:
-  python main.py                    # boucle continue (navigateur caché)
-  python main.py --headless false   # boucle avec navigateur visible
-  python main.py --once             # un seul cycle puis quitte
+  python main.py                      # boucle continue (navigateur caché)
+  python main.py --headless false     # boucle avec navigateur visible
+  python main.py --once               # un seul cycle puis quitte
+  python main.py --report             # affiche le rapport sans lancer le bot
+  python main.py --report --sim       # rapport simulation uniquement
+  python main.py --report --real      # rapport vrais paris uniquement
+  python main.py --result 3 --won     # marquer le pari #3 comme gagné
+  python main.py --result 3 --lost    # marquer le pari #3 comme perdu
 """
 
 import argparse
@@ -16,6 +21,7 @@ import sys
 import time
 
 import config
+import tracker
 from scraper import MiseOJeuScraper
 from strategy import filter_eligible_bets, summarize
 
@@ -29,7 +35,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-RETRY_INTERVAL_SECONDS = 5 * 60  # 5 minutes entre chaque vérification
+RETRY_INTERVAL_SECONDS = 5 * 60
 
 
 def get_balance(scraper: MiseOJeuScraper) -> float:
@@ -65,9 +71,11 @@ def check_and_bet(scraper: MiseOJeuScraper) -> bool:
         return False
 
     logger.info(
-        "✓ %d paris éligibles trouvés (≥ %d). Placement en cours…",
+        "%d paris éligibles trouvés (>= %d). Placement en cours…",
         len(eligible), config.MIN_BETS_TO_PLACE,
     )
+
+    placed = False
     for bet in eligible:
         success = scraper.place_bet(bet["id"], bet["bet_amount"])
         status = "placé" if success else "ÉCHEC"
@@ -75,14 +83,29 @@ def check_and_bet(scraper: MiseOJeuScraper) -> bool:
             "Pari %s: %s | cote %.4f | $%.2f",
             status, bet["description"][:60], bet["odds"], bet["bet_amount"],
         )
-    return True
+        if success:
+            tracker.record_bet(bet, bet["bet_amount"], dry_run=config.DRY_RUN)
+            placed = True
+
+    if placed:
+        # Afficher un mini-rapport après chaque série de mises
+        _print_session_summary(eligible)
+
+    return placed
+
+
+def _print_session_summary(eligible: list[dict]) -> None:
+    total_stake = sum(b["bet_amount"] for b in eligible)
+    total_potential = sum(b["bet_amount"] * b["odds"] for b in eligible)
+    total_profit = total_potential - total_stake
+    mode = "SIMULATION" if config.DRY_RUN else "RÉEL"
+    logger.info(
+        "[%s] Résumé session — Misé: $%.2f | Retour potentiel: $%.2f | Gain potentiel: $%.2f",
+        mode, total_stake, total_potential, total_profit,
+    )
 
 
 def run_session(headless: bool = True, once: bool = False):
-    """
-    Ouvre le navigateur, se connecte, puis tourne en boucle.
-    Si aucun pari éligible: attend 5 min et revérifie (navigateur reste ouvert).
-    """
     scraper = MiseOJeuScraper()
     try:
         scraper.start(headless=headless)
@@ -113,14 +136,38 @@ def run_session(headless: bool = True, once: bool = False):
         logger.info("Arrêt demandé par l'utilisateur.")
     finally:
         scraper.stop()
+        # Rapport automatique à la fin de chaque session
+        logger.info("=== Rapport de fin de session ===")
+        tracker.print_report()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Bot de paris Mise O Jeu")
     parser.add_argument("--once", action="store_true", help="Un seul cycle puis quitte")
-    parser.add_argument("--headless", default="true", choices=["true", "false"],
-                        help="Mode sans fenêtre (défaut: true)")
+    parser.add_argument("--headless", default="true", choices=["true", "false"])
+    parser.add_argument("--report", action="store_true", help="Afficher le rapport et quitter")
+    parser.add_argument("--sim", action="store_true", help="Rapport simulation seulement")
+    parser.add_argument("--real", action="store_true", help="Rapport vrais paris seulement")
+    parser.add_argument("--result", type=int, metavar="INDEX",
+                        help="Numéro du pari dont on veut enregistrer le résultat")
+    parser.add_argument("--won", action="store_true", help="Marquer le pari comme gagné")
+    parser.add_argument("--lost", action="store_true", help="Marquer le pari comme perdu")
     args = parser.parse_args()
+
+    # Mode rapport uniquement
+    if args.report:
+        dry_run_filter = True if args.sim else (False if args.real else None)
+        tracker.print_report(dry_run_only=dry_run_filter)
+        return
+
+    # Mode enregistrement de résultat
+    if args.result is not None:
+        if not args.won and not args.lost:
+            print("Précisez --won ou --lost.")
+            return
+        tracker.mark_result(args.result, won=args.won)
+        tracker.print_report()
+        return
 
     headless = args.headless.lower() == "true"
 
