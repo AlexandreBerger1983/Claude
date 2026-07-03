@@ -1,8 +1,13 @@
 # Guide d'impression 3D - Johnny-Mow
 
-## Logiciel requis
-Télécharger **OpenSCAD** (gratuit) : https://openscad.org
-Ouvrir chaque `.scad` → F6 pour compiler → Exporter en STL
+## STL prêts à imprimer
+
+Les fichiers compilés sont dans le dossier `stl/` — ils peuvent être envoyés
+directement au slicer (Cura, PrusaSlicer, Bambu Studio…) sans passer par OpenSCAD.
+
+Pour modifier les dimensions (diamètre moteur, taille de maillon…) : éditer
+`params.scad`, puis recompiler avec **OpenSCAD** (gratuit : https://openscad.org)
+→ ouvrir le `.scad` → F6 → Exporter en STL.
 
 ---
 
@@ -10,12 +15,16 @@ Ouvrir chaque `.scad` → F6 pour compiler → Exporter en STL
 
 | Fichier | Qté | Matériau | Remplissage | Périmètres | Supports | ~Temps |
 |---------|-----|----------|-------------|------------|----------|--------|
-| `chassis_base.scad` | 1 | PETG | 40% | 4 | Non | ~8h |
-| `track_link.scad` | 75 | TPU 95A | 80% | 4 | Non | ~20min/pièce |
-| `wheel_sprocket.scad` | 2 | PETG | 50% | 4 | Non | ~2h |
-| `idler_wheel.scad` | 2 | PETG | 40% | 4 | Non | ~1h30 |
-| `motor_mount.scad` | 4 | PETG | 60% | 4 | Non | ~1h |
-| `blade_guard.scad` | 1 | PETG/ABS | 60% | **6** | Non | ~3h |
+| `stl/chassis_base.stl` | 1 | PETG | 40% | 4 | Non | ~8h |
+| `stl/track_link.stl` | 75 | TPU 95A | 80% | 4 | Non | ~20min/pièce |
+| `stl/track_pin.stl` | 150 | PETG | 100% | 3 | Non | ~5min/pièce |
+| `stl/wheel_sprocket.stl` | 2 | PETG | 50% | 4 | Non | ~2h |
+| `stl/idler_wheel.stl` | 2 | PETG | 40% | 4 | Non | ~1h30 |
+| `stl/motor_mount.stl` | 4 | PETG | 60% | 4 | Non | ~1h |
+| `stl/blade_guard.stl` | 1 | PETG/ABS | 60% | **6** | Non | ~3h |
+
+> Les goupilles imprimées (`track_pin.stl`) fonctionnent, mais pour une chenille
+> qui dure : couper des tiges d'acier ø4mm à 44mm (voir quincaillerie).
 
 > TPU pour les maillons = amortissement + adhérence sur herbe.
 > Si pas de TPU, utiliser PETG rigide (mais moins silencieux).

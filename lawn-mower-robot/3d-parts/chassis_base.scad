@@ -10,16 +10,20 @@ $fn = 64;
 // Rayon lame + garde
 blade_R = blade_D / 2 + blade_clearance;
 
+// Chevauchement plaque/rails : les surfaces doivent se pénétrer (pas
+// seulement se toucher) sinon le maillage exporté est non-manifold.
+overlap = 2;
+
 module chassis() {
     difference() {
         union() {
-            // --- Plaque de base centrale ---
+            // --- Plaque de base centrale (pénètre de 2mm dans les rails) ---
             translate([0, 0, 0])
             hull() {
-                translate([ chassis_L/2 - 15,  chassis_W/2 - rail_W - 15, 0]) cylinder(r=15, h=chassis_H);
-                translate([-chassis_L/2 + 15,  chassis_W/2 - rail_W - 15, 0]) cylinder(r=15, h=chassis_H);
-                translate([ chassis_L/2 - 15, -chassis_W/2 + rail_W + 15, 0]) cylinder(r=15, h=chassis_H);
-                translate([-chassis_L/2 + 15, -chassis_W/2 + rail_W + 15, 0]) cylinder(r=15, h=chassis_H);
+                translate([ chassis_L/2 - 15,  chassis_W/2 - rail_W - 15 + overlap, 0]) cylinder(r=15, h=chassis_H);
+                translate([-chassis_L/2 + 15,  chassis_W/2 - rail_W - 15 + overlap, 0]) cylinder(r=15, h=chassis_H);
+                translate([ chassis_L/2 - 15, -chassis_W/2 + rail_W + 15 - overlap, 0]) cylinder(r=15, h=chassis_H);
+                translate([-chassis_L/2 + 15, -chassis_W/2 + rail_W + 15 - overlap, 0]) cylinder(r=15, h=chassis_H);
             }
 
             // --- Rails latéraux gauche et droite ---
@@ -31,20 +35,21 @@ module chassis() {
             // --- Plancher central surélevé (au-dessus de la lame) ---
             translate([0, 0, chassis_H])
             hull() {
-                translate([ chassis_L/2 - 20,  chassis_W/2 - rail_W - 20, 0]) cylinder(r=20, h=center_H);
-                translate([-chassis_L/2 + 20,  chassis_W/2 - rail_W - 20, 0]) cylinder(r=20, h=center_H);
-                translate([ chassis_L/2 - 20, -chassis_W/2 + rail_W + 20, 0]) cylinder(r=20, h=center_H);
-                translate([-chassis_L/2 + 20, -chassis_W/2 + rail_W + 20, 0]) cylinder(r=20, h=center_H);
+                translate([ chassis_L/2 - 20,  chassis_W/2 - rail_W - 20 + overlap, 0]) cylinder(r=20, h=center_H);
+                translate([-chassis_L/2 + 20,  chassis_W/2 - rail_W - 20 + overlap, 0]) cylinder(r=20, h=center_H);
+                translate([ chassis_L/2 - 20, -chassis_W/2 + rail_W + 20 - overlap, 0]) cylinder(r=20, h=center_H);
+                translate([-chassis_L/2 + 20, -chassis_W/2 + rail_W + 20 - overlap, 0]) cylinder(r=20, h=center_H);
             }
 
             // --- Nervures de rigidification ---
+            // Ancrées dans la plaque de base (mi-épaisseur) et le plancher
             for (y = [-60, 0, 60]) {
-                translate([0, y, chassis_H])
-                    cube([chassis_L - rail_W*2 - 10, 6, center_H - 4], center=true);
+                translate([0, y, chassis_H/2 + center_H/2])
+                    cube([chassis_L - rail_W*2 - 10, 6, center_H], center=true);
             }
             for (x = [-100, -33, 33, 100]) {
-                translate([x, 0, chassis_H])
-                    cube([6, chassis_W - rail_W*2 - 10, center_H - 4], center=true);
+                translate([x, 0, chassis_H/2 + center_H/2])
+                    cube([6, chassis_W - rail_W*2 - 10, center_H], center=true);
             }
         }
 
@@ -70,25 +75,27 @@ module chassis() {
 }
 
 module rail() {
+    // Rail posé sur z=0 (même plan que la plaque de base) pour une
+    // impression à plat sans support.
     difference() {
-        union() {
-            // Corps principal du rail
+        // Corps principal du rail
+        translate([0, 0, (chassis_H + rail_H)/2])
             cube([chassis_L, rail_W, chassis_H + rail_H], center=true);
-            // Lèvre intérieure de guidage chenille
-            translate([0, -rail_W/2 + rail_wall + 2, (chassis_H + rail_H)/2 - rail_H/2])
-                cube([chassis_L, 4, rail_H/2], center=true);
-            translate([0,  rail_W/2 - rail_wall - 2, (chassis_H + rail_H)/2 - rail_H/2])
-                cube([chassis_L, 4, rail_H/2], center=true);
-        }
-        // Allégement intérieur
-        translate([0, 0, chassis_H + 2])
+        // Allégement intérieur (ouvert vers le haut, plancher conservé)
+        translate([0, 0, chassis_H + 2 + (rail_H + 2)/2])
             cube([chassis_L - 30, rail_W - rail_wall*2, rail_H + 2], center=true);
-        // Trous de fixation moteur (avant et arrière)
+        // Encoches berceau moteur (avant et arrière)
         for (x = [chassis_L/2 - 25, -chassis_L/2 + 25]) {
             translate([x, 0, chassis_H + rail_H/2])
                 rotate([90, 0, 0])
                     cylinder(r=motor_D/2 + 1, h=rail_W + 2, center=true);
         }
+    }
+    // Lèvres de guidage chenille : à cheval sur les parois (moitié
+    // encastrée dans le mur, moitié en surplomb dans l'allégement)
+    for (side = [-1, 1]) {
+        translate([0, side * (rail_W/2 - rail_wall), chassis_H + rail_H*3/4])
+            cube([chassis_L, rail_wall, rail_H/2], center=true);
     }
 }
 
@@ -117,10 +124,10 @@ module cable_holes() {
         translate([pos[0], pos[1], -1])
             cylinder(r=8, h=chassis_H + 2);
     }
-    // Passages I2C et GPIO
+    // Passages I2C et GPIO (traversent plaque de base + plancher)
     for (pos = [[0, 60], [0, -60]]) {
-        translate([pos[0], pos[1], chassis_H - 1])
-            cube([20, 8, center_H + 2], center=true);
+        translate([pos[0], pos[1], (chassis_H + center_H)/2])
+            cube([20, 8, chassis_H + center_H + 2], center=true);
     }
 }
 
