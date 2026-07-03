@@ -9,6 +9,7 @@ import { clients } from '../../data/mockData'
 import { CATALOG, CATEGORIES, CATEGORY_META, ROOM_PRESETS, PROJECT_TYPE_CHIPS } from '../../data/estimatorCatalog'
 import { formatCurrency } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import {
   DRAFT_KEY, SAVED_KEY, emptyDraft, computeRoom, autoQtyForItem,
   lineTotal, computeTotals, nextQuoteNumber, fromMeters,
@@ -518,6 +519,7 @@ function StepWorks({ draft, update }) {
 function StepQuote({ draft, update, onSave }) {
   const { rooms, items, settings, client, unit } = draft
   const [showAdjust, setShowAdjust] = useState(false)
+  const [companySettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const totals = computeTotals(items, settings)
 
   const byRoom = rooms
@@ -604,13 +606,21 @@ function StepQuote({ draft, update, onSave }) {
         <div className="flex flex-wrap justify-between gap-4 mb-6 pb-5 border-b border-slate-200">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-9 h-9 bg-brand-500 rounded-lg flex items-center justify-center text-white font-bold">CP</div>
+              <div className="w-9 h-9 bg-brand-500 rounded-lg flex items-center justify-center text-white font-bold overflow-hidden flex-shrink-0">
+                {companySettings.logoDataUrl
+                  ? <img src={companySettings.logoDataUrl} alt="Logo" className="w-full h-full object-contain" />
+                  : (companySettings.companyName || 'CP').slice(0, 2).toUpperCase()}
+              </div>
               <div>
-                <p className="font-bold text-slate-800">ConstructPro Inc.</p>
-                <p className="text-xs text-slate-400">RBQ 8001-2345-67 · NEQ 1187654321</p>
+                <p className="font-bold text-slate-800">{companySettings.companyName || 'Votre entreprise'}</p>
+                <p className="text-xs text-slate-400">
+                  {[companySettings.rbq && `RBQ ${companySettings.rbq}`, companySettings.neq && `NEQ ${companySettings.neq}`].filter(Boolean).join(' · ')}
+                </p>
               </div>
             </div>
-            <p className="text-xs text-slate-500">123 rue Industrielle, Montréal (QC) H2X 1Z9 · 514-555-0100</p>
+            <p className="text-xs text-slate-500">
+              {[companySettings.address, companySettings.phone].filter(Boolean).join(' · ')}
+            </p>
           </div>
           <div className="text-right">
             <p className="text-xl font-bold text-brand-500">DEVIS</p>

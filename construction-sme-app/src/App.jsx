@@ -13,6 +13,8 @@ import Calendar from './components/calendar/Calendar'
 import Documents from './components/documents/Documents'
 import Reports from './components/reports/Reports'
 import Estimator from './components/estimator/Estimator'
+import Payroll from './components/payroll/Payroll'
+import Settings from './components/settings/Settings'
 
 export default function App() {
   return (
@@ -26,11 +28,13 @@ export default function App() {
         <Route path="clients" element={<Clients />} />
         <Route path="employes" element={<Employees />} />
         <Route path="feuilles-de-temps" element={<Timesheets />} />
+        <Route path="paie" element={<Payroll />} />
         <Route path="materiaux" element={<Materials />} />
         <Route path="sous-traitants" element={<Subcontractors />} />
         <Route path="calendrier" element={<Calendar />} />
         <Route path="documents" element={<Documents />} />
         <Route path="rapports" element={<Reports />} />
+        <Route path="parametres" element={<Settings />} />
       </Route>
     </Routes>
   )

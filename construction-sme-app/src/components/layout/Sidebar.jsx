@@ -2,9 +2,11 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, FolderKanban, FileText, Receipt, Users, HardHat,
   Clock, Package, Wrench, BarChart3, Calendar, FolderOpen,
-  ChevronRight, Building2, Bell, Settings, LogOut, Calculator,
+  ChevronRight, Building2, Bell, Settings, Calculator, Wallet,
 } from 'lucide-react'
 import { alerts } from '../../data/mockData'
+import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import clsx from 'clsx'
 
 const nav = [
@@ -16,6 +18,7 @@ const nav = [
   { label: 'Clients', to: '/clients', icon: Users },
   { label: 'Employés', to: '/employes', icon: HardHat },
   { label: 'Feuilles de temps', to: '/feuilles-de-temps', icon: Clock },
+  { label: 'Paie & Heures', to: '/paie', icon: Wallet },
   { label: 'Matériaux', to: '/materiaux', icon: Package },
   { label: 'Sous-traitants', to: '/sous-traitants', icon: Wrench },
   { label: 'Calendrier', to: '/calendrier', icon: Calendar },
@@ -26,6 +29,11 @@ const nav = [
 const urgentAlerts = alerts.filter(a => a.type === 'danger' || a.type === 'warning').length
 
 export default function Sidebar({ collapsed, setCollapsed }) {
+  const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
+  const companyName = settings.companyName || 'ConstructPro'
+  const ownerName = settings.ownerName || 'Propriétaire'
+  const initials = (settings.ownerName || 'AB').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
   return (
     <aside className={clsx(
       'fixed top-0 left-0 h-full bg-slate-900 flex flex-col transition-all duration-300 z-30 border-r border-white/5',
@@ -33,12 +41,16 @@ export default function Sidebar({ collapsed, setCollapsed }) {
     )}>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-white/10 flex-shrink-0">
-        <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Building2 size={18} className="text-white" />
+        <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
+          {settings.logoDataUrl ? (
+            <img src={settings.logoDataUrl} alt="Logo" className="w-full h-full object-contain" />
+          ) : (
+            <Building2 size={18} className="text-white" />
+          )}
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <div className="text-white font-bold text-sm leading-tight">ConstructPro</div>
+            <div className="text-white font-bold text-sm leading-tight truncate">{companyName}</div>
             <div className="text-slate-500 text-xs">Gestion PME</div>
           </div>
         )}
@@ -80,17 +92,21 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Footer */}
       <div className="border-t border-white/10 p-2 space-y-0.5">
-        <button className="sidebar-link w-full" title={collapsed ? 'Paramètres' : undefined}>
+        <NavLink
+          to="/parametres"
+          className={({ isActive }) => clsx('sidebar-link w-full', isActive && 'active')}
+          title={collapsed ? 'Paramètres' : undefined}
+        >
           <Settings size={17} />
           {!collapsed && <span>Paramètres</span>}
-        </button>
+        </NavLink>
         <div className={clsx('flex items-center gap-3 px-3 py-2', collapsed && 'justify-center')}>
           <div className="w-7 h-7 rounded-full bg-brand-500/30 flex items-center justify-center text-brand-300 text-xs font-bold flex-shrink-0">
-            AB
+            {initials}
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-white text-xs font-medium truncate">Alexandre Berger</div>
+              <div className="text-white text-xs font-medium truncate">{ownerName}</div>
               <div className="text-slate-500 text-xs truncate">Propriétaire</div>
             </div>
           )}

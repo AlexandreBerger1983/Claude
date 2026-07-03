@@ -2,11 +2,14 @@ import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Printer, Send, CheckCircle } from 'lucide-react'
 import { quotes } from '../../data/mockData'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
+import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import clsx from 'clsx'
 
 export default function QuoteDetail() {
   const { id } = useParams()
   const quote = quotes.find(q => q.id === Number(id))
+  const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   if (!quote) return <div className="text-slate-500 p-8">Soumission introuvable</div>
 
   return (
@@ -35,16 +38,20 @@ export default function QuoteDetail() {
         <div className="flex justify-between mb-8">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">CP</div>
+              <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0">
+                {settings.logoDataUrl
+                  ? <img src={settings.logoDataUrl} alt="Logo" className="w-full h-full object-contain" />
+                  : (settings.companyName || 'CP').slice(0, 2).toUpperCase()}
+              </div>
               <div>
-                <div className="font-bold text-slate-800">ConstructPro Inc.</div>
-                <div className="text-xs text-slate-400">NEQ: 1187654321</div>
+                <div className="font-bold text-slate-800">{settings.companyName || 'Votre entreprise'}</div>
+                {settings.neq && <div className="text-xs text-slate-400">NEQ: {settings.neq}</div>}
               </div>
             </div>
             <div className="text-xs text-slate-500 space-y-0.5">
-              <p>123 rue Industrielle, Montréal (QC) H2X 1Z9</p>
-              <p>Tél: 514-555-0100 · info@constructpro.ca</p>
-              <p>RBQ: 8001-2345-67</p>
+              {settings.address && <p>{settings.address}</p>}
+              {(settings.phone || settings.email) && <p>{[settings.phone && `Tél: ${settings.phone}`, settings.email].filter(Boolean).join(' · ')}</p>}
+              {settings.rbq && <p>RBQ: {settings.rbq}</p>}
             </div>
           </div>
           <div className="text-right">

@@ -14,11 +14,13 @@ const pageTitles = {
   '/clients': 'Clients',
   '/employes': 'Employés',
   '/feuilles-de-temps': 'Feuilles de temps',
+  '/paie': 'Paie & Heures',
   '/materiaux': 'Matériaux & Inventaire',
   '/sous-traitants': 'Sous-traitants',
   '/calendrier': 'Calendrier',
   '/documents': 'Documents',
   '/rapports': 'Rapports',
+  '/parametres': 'Paramètres',
 }
 
 const mobileNav = [
