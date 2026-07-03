@@ -362,6 +362,27 @@ export const CATALOG = [
 
 export const CATEGORIES = [...new Set(CATALOG.map(i => i.category))]
 
+// Émojis et descriptions simples par catégorie (pour l'interface tactile)
+export const CATEGORY_META = {
+  'Démolition':            { emoji: '🔨', desc: 'Enlever murs, planchers, plafonds' },
+  'Ossature & Structure':  { emoji: '🏗️', desc: 'Monter de nouveaux murs' },
+  'Isolation':             { emoji: '❄️', desc: 'Isoler murs et plafonds' },
+  'Gypse & Plâtrage':      { emoji: '🧱', desc: 'Poser et finir le gypse' },
+  'Plafonds finis':        { emoji: '⬜', desc: 'Tuiles acoustiques, gypse peint' },
+  'Planchers':             { emoji: '🪵', desc: 'Bois, céramique, vinyle…' },
+  'Peinture':              { emoji: '🎨', desc: 'Murs, plafonds, boiseries' },
+  'Fenêtres & Portes':     { emoji: '🚪', desc: 'Remplacer portes et fenêtres' },
+  'Électricité':           { emoji: '💡', desc: 'Prises, luminaires, panneau' },
+  'Plomberie':             { emoji: '🚿', desc: 'Salle de bain, cuisine, points d\'eau' },
+  'HVAC & Mécanique':      { emoji: '🌡️', desc: 'Chauffage, climatisation, ventilation' },
+  'Revêtement extérieur':  { emoji: '🏠', desc: 'Vinyle, brique, stucco' },
+  'Toiture':               { emoji: '☔', desc: 'Bardeau, membrane' },
+  'Béton & Fondations':    { emoji: '🪨', desc: 'Dalles, drains, imperméabilisation' },
+  'Carrelage':             { emoji: '🔲', desc: 'Céramique murale, dosseret' },
+  'Cuisine & Armoires':    { emoji: '🍳', desc: 'Armoires, comptoirs' },
+  'Divers':                { emoji: '📦', desc: 'Nettoyage, benne, gestion' },
+}
+
 // Markups par défaut
 export const DEFAULT_SETTINGS = {
   overheadPct: 12,       // Frais généraux
@@ -371,20 +392,32 @@ export const DEFAULT_SETTINGS = {
   tvqPct: 9.975,
 }
 
-// Types de pièces avec dimensions typiques pour suggestion rapide
+// Types de pièces avec dimensions typiques (en mètres) pour ajout rapide
 export const ROOM_PRESETS = [
-  { label: 'Bureau / Salle de réunion', length: 5, width: 4, height: 2.7 },
-  { label: 'Salle de bain standard', length: 2.4, width: 2.1, height: 2.4 },
-  { label: 'Salle de bain principale', length: 3.2, width: 2.8, height: 2.7 },
-  { label: 'Cuisine résidentielle', length: 4.5, width: 3.5, height: 2.7 },
-  { label: 'Chambre standard', length: 4.2, width: 3.4, height: 2.7 },
-  { label: 'Chambre principale', length: 5.5, width: 4.5, height: 2.7 },
-  { label: 'Salon / Séjour', length: 6.5, width: 5, height: 2.7 },
-  { label: 'Couloir', length: 8, width: 1.2, height: 2.7 },
-  { label: 'Garage', length: 7.5, width: 6, height: 2.7 },
-  { label: 'Sous-sol non fini', length: 12, width: 8, height: 2.1 },
-  { label: 'Local commercial (petit)', length: 8, width: 6, height: 3 },
-  { label: 'Local commercial (moyen)', length: 15, width: 10, height: 3.5 },
-  { label: 'Entrepôt', length: 30, width: 20, height: 5 },
-  { label: 'Personnalisé', length: 0, width: 0, height: 2.7 },
+  { label: 'Cuisine', emoji: '🍳', length: 4.5, width: 3.5, height: 2.44 },
+  { label: 'Salle de bain', emoji: '🛁', length: 2.4, width: 2.1, height: 2.44 },
+  { label: 'Chambre', emoji: '🛏️', length: 4.2, width: 3.4, height: 2.44 },
+  { label: 'Salon', emoji: '🛋️', length: 6.5, width: 5, height: 2.44 },
+  { label: 'Sous-sol', emoji: '🔦', length: 12, width: 8, height: 2.13 },
+  { label: 'Garage', emoji: '🚗', length: 7.5, width: 6, height: 2.44 },
+  { label: 'Couloir', emoji: '🚶', length: 8, width: 1.2, height: 2.44 },
+  { label: 'Bureau', emoji: '💼', length: 5, width: 4, height: 2.44 },
+  { label: 'Salle de lavage', emoji: '🧺', length: 2.5, width: 2, height: 2.44 },
+  { label: 'Extérieur / Toit', emoji: '🏠', length: 12, width: 9, height: 2.44 },
+  { label: 'Local commercial', emoji: '🏢', length: 15, width: 10, height: 3 },
+  { label: 'Autre pièce', emoji: '➕', length: 4, width: 3, height: 2.44 },
+]
+
+// Types de travaux proposés à l'étape 1 (gros boutons)
+export const PROJECT_TYPE_CHIPS = [
+  { label: 'Cuisine', emoji: '🍳' },
+  { label: 'Salle de bain', emoji: '🛁' },
+  { label: 'Sous-sol', emoji: '🔦' },
+  { label: 'Peinture', emoji: '🎨' },
+  { label: 'Planchers', emoji: '🪵' },
+  { label: 'Toiture', emoji: '☔' },
+  { label: 'Portes & Fenêtres', emoji: '🚪' },
+  { label: 'Agrandissement', emoji: '🏗️' },
+  { label: 'Rénovation générale', emoji: '🔨' },
+  { label: 'Autre', emoji: '📋' },
 ]

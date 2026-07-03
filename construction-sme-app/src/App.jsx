@@ -20,7 +20,7 @@ export default function App() {
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="projets/*" element={<Projects />} />
-        <Route path="estimateur" element={<Estimator />} />
+        <Route path="estimateur/*" element={<Estimator />} />
         <Route path="soumissions/*" element={<Quotes />} />
         <Route path="facturation" element={<Invoices />} />
         <Route path="clients" element={<Clients />} />

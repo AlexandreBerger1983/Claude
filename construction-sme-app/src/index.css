@@ -73,3 +73,35 @@
 .progress-fill {
   @apply h-full rounded-full transition-all duration-500;
 }
+
+/* Masquer les flèches des champs numériques (les steppers ont leurs boutons) */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* ─── Impression : ne montrer que le devis (#devis) ─── */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #devis, #devis * {
+    visibility: visible;
+  }
+  #devis {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
