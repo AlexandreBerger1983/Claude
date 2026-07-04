@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Printer, Send, CheckCircle, AlertTriangle, X, Trash2 } from 'lucide-react'
+import { Plus, Search, Printer, Send, CheckCircle, AlertTriangle, X, Trash2, Pencil } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
@@ -96,6 +96,7 @@ export default function Invoices() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Tous')
   const [showNew, setShowNew] = useState(false)
+  const [editInvoice, setEditInvoice] = useState(null)
   const [printInvoice, setPrintInvoice] = useState(null)
 
   const invoices = data.invoices
@@ -145,6 +146,32 @@ export default function Invoices() {
 
   const markPaid = (inv) => update('invoices', inv.id, { status: 'Payée', paid: inv.total })
   const markSent = (inv) => update('invoices', inv.id, { status: 'Envoyée' })
+
+  const editFields = [
+    { name: 'client', label: 'Client', type: 'select', required: true, options: ['', ...data.clients.map(c => c.name)] },
+    { name: 'project', label: 'Projet (code)', type: 'select', options: ['', ...data.projects.map(p => p.code)] },
+    { name: 'type', label: 'Type', type: 'select', options: ['Acompte (10%)', 'Acompte (20%)', 'Avancement (20%)', 'Avancement (25%)', 'Avancement (40%)', 'Solde final', 'Autre'] },
+    { name: 'subtotal', label: 'Montant avant taxes ($)', type: 'number', required: true, step: '100' },
+    { name: 'date', label: "Date d'émission", type: 'date' },
+    { name: 'dueDate', label: "Date d'échéance", type: 'date' },
+    { name: 'status', label: 'Statut', type: 'select', options: ['Brouillon', 'En attente', 'Envoyée', 'Payée', 'En retard'] },
+  ]
+
+  const handleEdit = (values) => {
+    const subtotal = values.subtotal
+    const tps = +(subtotal * 0.05).toFixed(2)
+    const tvq = +(subtotal * 0.09975).toFixed(2)
+    const total = +(subtotal + tps + tvq).toFixed(2)
+    const clientObj = data.clients.find(c => c.name === values.client)
+    const projectObj = data.projects.find(p => p.code === values.project)
+    update('invoices', editInvoice.id, {
+      ...values,
+      clientId: clientObj?.id ?? editInvoice.clientId,
+      projectId: projectObj?.id ?? editInvoice.projectId,
+      tps, tvq, total,
+      paid: values.status === 'Payée' ? total : editInvoice.paid > total ? total : editInvoice.paid,
+    })
+  }
 
   const handleDelete = (inv) => {
     const msg = inv.status === 'Payée'
@@ -255,6 +282,9 @@ export default function Invoices() {
                       <button onClick={() => setPrintInvoice(inv)} title="Imprimer / PDF" className="btn-ghost py-1 px-2 text-xs">
                         <Printer size={13} />
                       </button>
+                      <button onClick={() => setEditInvoice(inv)} title="Modifier cette facture" aria-label={`Modifier ${inv.number}`} className="btn-ghost py-1 px-2 text-xs">
+                        <Pencil size={13} />
+                      </button>
                       {(inv.status === 'En attente' || inv.status === 'Brouillon') && (
                         <button onClick={() => markSent(inv)} title="Marquer envoyée" className="btn-ghost py-1 px-2 text-xs text-blue-600">
                           <Send size={13} />
@@ -292,6 +322,16 @@ export default function Invoices() {
           onSubmit={createInvoice}
           onClose={() => setShowNew(false)}
           submitLabel="Créer la facture"
+        />
+      )}
+
+      {editInvoice && (
+        <FormModal
+          title={`Modifier — ${editInvoice.number}`}
+          fields={editFields}
+          initialValues={editInvoice}
+          onSubmit={handleEdit}
+          onClose={() => setEditInvoice(null)}
         />
       )}
 

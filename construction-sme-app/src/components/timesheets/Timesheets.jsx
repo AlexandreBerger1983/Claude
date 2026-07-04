@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, CheckCircle, Clock, Search, Download, Trash2 } from 'lucide-react'
+import { Plus, CheckCircle, Clock, Search, Download, Trash2, Pencil } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatDate, formatCurrency } from '../../utils/formatters'
 import { downloadCsv } from '../../utils/csv'
@@ -11,7 +11,7 @@ export default function Timesheets() {
   const [search, setSearch] = useState('')
   const [empFilter, setEmpFilter] = useState('Tous')
   const [approvedFilter, setApprovedFilter] = useState('Tous')
-  const [showNew, setShowNew] = useState(false)
+  const [modal, setModal] = useState(null) // null | 'new' | entrée à modifier
 
   const timesheets = data.timesheets
   const employees = data.employees
@@ -40,15 +40,18 @@ export default function Timesheets() {
     { name: 'description', label: 'Description du travail', type: 'textarea', placeholder: 'ex: Pose de gypse au 2e étage' },
   ]
 
-  const handleCreate = (values) => {
+  const handleSubmit = (values) => {
     const emp = employees.find(e => e.name === values.employee)
     const proj = data.projects.find(p => p.code === values.project)
-    add('timesheets', {
+    const record = {
       ...values,
       employeeId: emp?.id ?? null,
       projectId: proj?.id ?? null,
+      // une entrée modifiée retourne « En attente » pour être ré-approuvée
       approved: false,
-    })
+    }
+    if (modal === 'new') add('timesheets', record)
+    else update('timesheets', modal.id, record)
   }
 
   const approve = (t) => update('timesheets', t.id, { approved: true })
@@ -85,7 +88,7 @@ export default function Timesheets() {
             <button onClick={approveAll} className="btn-secondary text-emerald-600"><CheckCircle size={15} /> Tout approuver</button>
           )}
           <button onClick={exportCsv} className="btn-secondary"><Download size={15} /> Exporter CSV</button>
-          <button onClick={() => setShowNew(true)} className="btn-primary"><Plus size={16} /> Nouvelle entrée</button>
+          <button onClick={() => setModal('new')} className="btn-primary"><Plus size={16} /> Nouvelle entrée</button>
         </div>
       </div>
 
@@ -188,6 +191,14 @@ export default function Timesheets() {
                         <button onClick={() => approve(t)} className="btn-ghost text-xs text-emerald-600 py-1 px-2">Approuver</button>
                       )}
                       <button
+                        onClick={() => setModal(t)}
+                        className="p-1.5 text-slate-300 hover:text-brand-500 transition-colors"
+                        aria-label="Modifier cette entrée"
+                        title="Modifier cette entrée"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
                         onClick={() => window.confirm(`Supprimer cette entrée de ${t.hours}h (${t.employee}, ${t.date}) ?`) && remove('timesheets', t.id)}
                         className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
                         aria-label="Supprimer cette entrée"
@@ -207,13 +218,14 @@ export default function Timesheets() {
         )}
       </div>
 
-      {showNew && (
+      {modal && (
         <FormModal
-          title="Nouvelle entrée de temps"
+          title={modal === 'new' ? 'Nouvelle entrée de temps' : `Modifier — ${modal.employee}, ${formatDate(modal.date)}`}
           fields={entryFields}
-          onSubmit={handleCreate}
-          onClose={() => setShowNew(false)}
-          submitLabel="Ajouter"
+          initialValues={modal === 'new' ? {} : modal}
+          onSubmit={handleSubmit}
+          onClose={() => setModal(null)}
+          submitLabel={modal === 'new' ? 'Ajouter' : 'Enregistrer'}
         />
       )}
     </div>
