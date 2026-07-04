@@ -4,8 +4,9 @@ import {
   Clock, Package, Wrench, BarChart3, Calendar, FolderOpen,
   ChevronRight, Building2, Bell, Settings, Calculator, Wallet,
 } from 'lucide-react'
-import { alerts } from '../../data/mockData'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { useData } from '../../store/DataContext'
+import { computeAlerts } from '../../utils/alerts'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import clsx from 'clsx'
 
@@ -26,10 +27,10 @@ const nav = [
   { label: 'Rapports', to: '/rapports', icon: BarChart3 },
 ]
 
-const urgentAlerts = alerts.filter(a => a.type === 'danger' || a.type === 'warning').length
-
 export default function Sidebar({ collapsed, setCollapsed }) {
+  const { data } = useData()
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
+  const urgentAlerts = computeAlerts(data).filter(a => a.type === 'danger' || a.type === 'warning').length
   const companyName = settings.companyName || 'ConstructPro'
   const ownerName = settings.ownerName || 'Propriétaire'
   const initials = (settings.ownerName || 'AB').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()

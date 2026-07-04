@@ -13,4 +13,5 @@ export const DEFAULT_COMPANY_SETTINGS = {
   logoDataUrl: '',
   tpsPct: 5,
   tvqPct: 9.975,
+  revenueTarget: 0,
 }

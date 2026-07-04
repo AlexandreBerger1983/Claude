@@ -191,6 +191,24 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Objectif annuel */}
+      <div className="card space-y-3">
+        <h3 className="font-semibold text-slate-800">Objectif de chiffre d'affaires annuel</h3>
+        <p className="text-xs text-slate-500">
+          Utilisé par le tableau de bord pour afficher votre progression (montant facturé vs objectif).
+        </p>
+        <div className="flex items-center gap-2 max-w-xs">
+          <input
+            type="number" step="10000" min="0"
+            value={settings.revenueTarget || ''}
+            onChange={e => update('revenueTarget', parseFloat(e.target.value) || 0)}
+            placeholder="ex: 1500000"
+            className="input"
+          />
+          <span className="text-slate-500 text-sm flex-shrink-0">$ / an</span>
+        </div>
+      </div>
+
       {/* Zone données */}
       <div className="card border-red-100">
         <h3 className="font-semibold text-slate-800 mb-1">Données de l'application</h3>

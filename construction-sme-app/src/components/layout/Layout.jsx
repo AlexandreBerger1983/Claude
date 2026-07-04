@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react'
 import { Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import { Bell, Search, LayoutDashboard, Calculator, FolderKanban, Receipt, Menu, X, Users, FileText } from 'lucide-react'
-import { alerts } from '../../data/mockData'
 import { useData } from '../../store/DataContext'
+import { computeAlerts } from '../../utils/alerts'
 import clsx from 'clsx'
 
 // Recherche globale : clients, projets, soumissions, factures
@@ -103,12 +103,15 @@ const mobileNav = [
 ]
 
 export default function Layout() {
+  const { data } = useData()
+  const navigate = useNavigate()
   const [collapsed, setCollapsed] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { pathname } = useLocation()
 
   const title = Object.entries(pageTitles).find(([k]) => pathname === k || (k !== '/' && pathname.startsWith(k)))?.[1] ?? 'ConstructPro'
+  const alerts = useMemo(() => computeAlerts(data), [data])
   const urgentCount = alerts.filter(a => a.type === 'danger' || a.type === 'warning').length
 
   // Dans l'assistant de devis, on masque la barre mobile du bas pour laisser
@@ -166,15 +169,22 @@ export default function Layout() {
               <div className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-50">
                 <div className="px-4 py-3 border-b border-slate-100 font-semibold text-sm text-slate-700">Alertes</div>
                 <div className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                  {alerts.length === 0 && (
+                    <p className="px-4 py-6 text-center text-xs text-slate-400">Aucune alerte — tout est en ordre 👍</p>
+                  )}
                   {alerts.map(a => (
-                    <div key={a.id} className="px-4 py-3 flex gap-3 items-start">
+                    <button
+                      key={a.id}
+                      onClick={() => { setShowAlerts(false); navigate(a.to) }}
+                      className="w-full px-4 py-3 flex gap-3 items-start text-left hover:bg-slate-50 transition-colors"
+                    >
                       <div className={clsx('w-2 h-2 rounded-full mt-1.5 flex-shrink-0',
                         a.type === 'danger' ? 'bg-red-500' :
                         a.type === 'warning' ? 'bg-amber-500' :
                         a.type === 'success' ? 'bg-emerald-500' : 'bg-blue-500'
                       )} />
                       <p className="text-xs text-slate-600 leading-relaxed">{a.message}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
