@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Trash2, Check, Printer, Save,
   UserRound, Ruler, Hammer, ReceiptText, ChevronDown, Home, X,
-  SlidersHorizontal, PartyPopper,
+  SlidersHorizontal, PartyPopper, Pencil, Package, Search,
 } from 'lucide-react'
+import FormModal from '../ui/FormModal'
 import { useData } from '../../store/DataContext'
 import { CATALOG, CATEGORIES, CATEGORY_META, ROOM_PRESETS, PROJECT_TYPE_CHIPS } from '../../data/estimatorCatalog'
 import { formatCurrency } from '../../utils/formatters'
@@ -321,8 +322,13 @@ function StepRooms({ draft, update }) {
 // ─── Étape 3 : Les travaux ────────────────────────────────────────────────────
 function StepWorks({ draft, update }) {
   const { rooms, items, unit } = draft
+  const { data } = useData()
   const [activeRoomId, setActiveRoomId] = useState(rooms[0]?.id ?? null)
   const [openCategory, setOpenCategory] = useState(null)
+  const [editItem, setEditItem] = useState(null)      // item en cours de modification
+  const [showCustom, setShowCustom] = useState(false) // formulaire ligne personnalisée
+  const [showInventory, setShowInventory] = useState(false)
+  const [invSearch, setInvSearch] = useState('')
 
   useEffect(() => {
     if (!rooms.find(r => r.id === activeRoomId) && rooms.length > 0) {
@@ -360,6 +366,60 @@ function StepWorks({ draft, update }) {
 
   const removeItem = (id) => update('items', items.filter(it => it.id !== id))
 
+  // Ligne personnalisée : quantité et prix entrés à la main, aucun lien
+  // avec les dimensions de la pièce
+  const addCustomLine = (values) => {
+    update('items', [...items, {
+      id: Date.now() + Math.random(),
+      catalogId: null,
+      description: values.description,
+      roomId: activeRoomId,
+      unit: values.unit || 'unité',
+      qty: String(values.qty || 1),
+      unitMat: String(values.unitMat || 0),
+      unitLabor: String(values.unitLabor || 0),
+    }])
+  }
+
+  // Article pris dans l'inventaire du module Matériaux
+  const addFromInventory = (material) => {
+    update('items', [...items, {
+      id: Date.now() + Math.random(),
+      catalogId: null,
+      description: material.name,
+      roomId: activeRoomId,
+      unit: material.unit,
+      qty: '1',
+      unitMat: String(material.unitCost),
+      unitLabor: '0',
+    }])
+  }
+
+  // Modification complète d'un item (description, qté, unité, prix)
+  const saveEdit = (values) => {
+    update('items', items.map(it => it.id === editItem.id ? {
+      ...it,
+      description: values.description,
+      unit: values.unit || it.unit,
+      qty: String(values.qty),
+      unitMat: String(values.unitMat),
+      unitLabor: String(values.unitLabor),
+    } : it))
+  }
+
+  const editFields = [
+    { name: 'description', label: 'Description', required: true, colSpan: 2 },
+    { name: 'qty', label: 'Quantité', type: 'number', step: '0.1', required: true },
+    { name: 'unit', label: 'Unité', placeholder: 'ex: m², unité, hre, forfait' },
+    { name: 'unitMat', label: 'Prix matériaux ($ / unité)', type: 'number', step: '0.01' },
+    { name: 'unitLabor', label: "Prix main-d'œuvre ($ / unité)", type: 'number', step: '0.01' },
+  ]
+
+  const filteredInventory = data.materials.filter(m =>
+    m.name.toLowerCase().includes(invSearch.toLowerCase()) ||
+    (m.category || '').toLowerCase().includes(invSearch.toLowerCase())
+  )
+
   // Prix estimé pour un élément du catalogue dans la pièce active
   const previewPrice = (catalogItem) => {
     const aqty = autoQtyForItem(catalogItem, roomCalc)
@@ -374,7 +434,10 @@ function StepWorks({ draft, update }) {
     <div className="space-y-5">
       <div className="text-center">
         <p className="text-lg font-bold text-slate-800">Quels travaux faut-il faire ?</p>
-        <p className="text-sm text-slate-500 mt-1">Choisissez la pièce, puis touchez les travaux à ajouter. Le prix se calcule tout seul selon les mesures.</p>
+        <p className="text-sm text-slate-500 mt-1">
+          Touchez les travaux du catalogue (prix calculé selon les mesures), ajoutez une <strong>ligne personnalisée</strong> à votre prix,
+          ou piochez dans <strong>votre inventaire</strong>. Le crayon ✏️ permet de tout modifier.
+        </p>
       </div>
 
       {/* Onglets pièces */}
@@ -419,17 +482,30 @@ function StepWorks({ draft, update }) {
           <div className="space-y-2.5">
             {roomItems.map(it => (
               <div key={it.id} className="bg-white rounded-xl p-3 flex flex-wrap items-center gap-3">
-                <p className="text-sm font-medium text-slate-700 flex-1 min-w-[140px]">{it.description}</p>
+                <div className="flex-1 min-w-[140px]">
+                  <p className="text-sm font-medium text-slate-700">{it.description}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {formatCurrency(parseFloat(it.unitMat) || 0)} mat. + {formatCurrency(parseFloat(it.unitLabor) || 0)} M.O. / {it.unit}
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="w-36">
                     <Stepper
                       value={it.qty}
                       onChange={v => updateItemQty(it.id, v)}
-                      step={it.unit === 'm²' || it.unit === 'm lin.' ? 1 : 1}
+                      step={1}
                       suffix={it.unit}
                     />
                   </div>
                   <p className="text-sm font-bold text-slate-800 w-20 text-right">{formatCurrency(lineTotal(it))}</p>
+                  <button
+                    onClick={() => setEditItem(it)}
+                    className="p-2 text-slate-300 hover:text-brand-500 transition-colors"
+                    aria-label="Modifier"
+                    title="Modifier description, quantité et prix"
+                  >
+                    <Pencil size={16} />
+                  </button>
                   <button
                     onClick={() => removeItem(it.id)}
                     className="p-2 text-slate-300 hover:text-red-400 transition-colors"
@@ -443,6 +519,22 @@ function StepWorks({ draft, update }) {
           </div>
         </div>
       )}
+
+      {/* Ajouts manuels : sans passer par la superficie de la pièce */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => setShowCustom(true)}
+          className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border-2 border-dashed border-slate-300 font-semibold text-slate-600 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50/40 transition-all text-sm"
+        >
+          <Pencil size={17} /> Ligne personnalisée
+        </button>
+        <button
+          onClick={() => { setShowInventory(true); setInvSearch('') }}
+          className="flex items-center justify-center gap-2 py-3.5 rounded-2xl border-2 border-dashed border-slate-300 font-semibold text-slate-600 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50/40 transition-all text-sm"
+        >
+          <Package size={17} /> De mon inventaire
+        </button>
+      </div>
 
       {/* Catégories de travaux */}
       <div className="space-y-2.5">
@@ -513,6 +605,89 @@ function StepWorks({ draft, update }) {
           )
         })}
       </div>
+
+      {/* Modale : modifier un item */}
+      {editItem && (
+        <FormModal
+          title="Modifier ce travail"
+          fields={editFields}
+          initialValues={{
+            description: editItem.description,
+            qty: editItem.qty,
+            unit: editItem.unit,
+            unitMat: editItem.unitMat,
+            unitLabor: editItem.unitLabor,
+          }}
+          onSubmit={saveEdit}
+          onClose={() => setEditItem(null)}
+        />
+      )}
+
+      {/* Modale : ligne personnalisée */}
+      {showCustom && (
+        <FormModal
+          title={`Ligne personnalisée — ${activeRoom?.name ?? ''}`}
+          fields={[
+            { name: 'description', label: 'Description du travail ou matériau', required: true, colSpan: 2, placeholder: 'ex: Location nacelle 26 pi — 3 jours' },
+            { name: 'qty', label: 'Quantité', type: 'number', step: '0.1', default: 1, required: true },
+            { name: 'unit', label: 'Unité', placeholder: 'ex: unité, hre, jour, forfait', default: 'unité' },
+            { name: 'unitMat', label: 'Prix matériaux ($ / unité)', type: 'number', step: '0.01', default: 0 },
+            { name: 'unitLabor', label: "Prix main-d'œuvre ($ / unité)", type: 'number', step: '0.01', default: 0 },
+          ]}
+          onSubmit={addCustomLine}
+          onClose={() => setShowCustom(false)}
+          submitLabel="Ajouter au devis"
+        />
+      )}
+
+      {/* Modale : choisir dans l'inventaire */}
+      {showInventory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setShowInventory(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800">Mes matériaux en inventaire</h3>
+              <button onClick={() => setShowInventory(false)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-5 py-3 border-b border-slate-100">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={invSearch}
+                  onChange={e => setInvSearch(e.target.value)}
+                  placeholder="Rechercher un article…"
+                  className="input pl-8"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-50">
+              {filteredInventory.length === 0 && (
+                <p className="px-5 py-8 text-center text-sm text-slate-400">Aucun article trouvé</p>
+              )}
+              {filteredInventory.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => { addFromInventory(m); setShowInventory(false) }}
+                  className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-brand-50 transition-colors"
+                >
+                  <Package size={16} className="text-slate-300 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-700">{m.name}</p>
+                    <p className="text-xs text-slate-400">{m.category} · {m.stock} {m.unit} en stock</p>
+                  </div>
+                  <p className="text-sm font-bold text-slate-700 flex-shrink-0">{formatCurrency(m.unitCost)} <span className="text-[10px] font-normal text-slate-400">/ {m.unit}</span></p>
+                </button>
+              ))}
+            </div>
+            <p className="px-5 py-3 border-t border-slate-100 text-xs text-slate-400">
+              L'article s'ajoute avec 1 unité au coût de votre inventaire — ajustez ensuite la quantité et la main-d'œuvre avec le crayon.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
