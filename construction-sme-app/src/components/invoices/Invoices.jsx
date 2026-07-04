@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Printer, Send, CheckCircle, AlertTriangle, X } from 'lucide-react'
+import { Plus, Search, Printer, Send, CheckCircle, AlertTriangle, X, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
@@ -91,7 +91,7 @@ function InvoicePrintModal({ invoice, company, onClose }) {
 }
 
 export default function Invoices() {
-  const { data, add, update } = useData()
+  const { data, add, update, remove } = useData()
   const [company] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Tous')
@@ -145,6 +145,13 @@ export default function Invoices() {
 
   const markPaid = (inv) => update('invoices', inv.id, { status: 'Payée', paid: inv.total })
   const markSent = (inv) => update('invoices', inv.id, { status: 'Envoyée' })
+
+  const handleDelete = (inv) => {
+    const msg = inv.status === 'Payée'
+      ? `Supprimer la facture « ${inv.number} » ?\n\nAttention : cette facture a été PAYÉE (${formatCurrency(inv.total)}). La supprimer faussera vos totaux d'encaissements.\n\nCette action est définitive.`
+      : `Supprimer la facture « ${inv.number} — ${inv.client} » (${formatCurrency(inv.total)}) ? Cette action est définitive.`
+    if (window.confirm(msg)) remove('invoices', inv.id)
+  }
 
   return (
     <div className="space-y-4">
@@ -258,6 +265,14 @@ export default function Invoices() {
                           <CheckCircle size={13} />
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDelete(inv)}
+                        title="Supprimer cette facture"
+                        aria-label={`Supprimer ${inv.number}`}
+                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>

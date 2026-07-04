@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, FileText, Send, CheckCircle, XCircle, Clock, Eye } from 'lucide-react'
+import { Plus, Search, FileText, Send, CheckCircle, XCircle, Clock, Eye, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
 import QuoteDetail from './QuoteDetail'
@@ -15,11 +15,18 @@ const StatusIcon = ({ s }) => {
 }
 
 function QuoteList() {
-  const { data } = useData()
+  const { data, remove } = useData()
   const navigate = useNavigate()
   const quotes = data.quotes
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Tous')
+
+  const handleDelete = (q) => {
+    const msg = q.status === 'Acceptée'
+      ? `Supprimer la soumission « ${q.number} » ?\n\nAttention : cette soumission a été ACCEPTÉE par le client.\n\nCette action est définitive.`
+      : `Supprimer la soumission « ${q.number} — ${q.title} » ? Cette action est définitive.`
+    if (window.confirm(msg)) remove('quotes', q.id)
+  }
 
   const statuses = ['Tous', 'Brouillon', 'Envoyée', 'En attente', 'Acceptée', 'Refusée']
   const filtered = quotes.filter(q =>
@@ -106,9 +113,19 @@ function QuoteList() {
                   </div>
                 </td>
                 <td className="px-4 py-3.5">
-                  <Link to={`/soumissions/${q.id}`} className="btn-ghost py-1 px-2 text-xs">
-                    <Eye size={13} /> Voir
-                  </Link>
+                  <div className="flex items-center gap-1">
+                    <Link to={`/soumissions/${q.id}`} className="btn-ghost py-1 px-2 text-xs">
+                      <Eye size={13} /> Voir
+                    </Link>
+                    <button
+                      onClick={() => handleDelete(q)}
+                      className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                      aria-label={`Supprimer ${q.number}`}
+                      title="Supprimer cette soumission"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

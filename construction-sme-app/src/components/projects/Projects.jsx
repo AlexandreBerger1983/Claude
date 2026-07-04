@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Routes, Route, useSearchParams } from 'react-router-dom'
-import { Plus, Search, X } from 'lucide-react'
+import { Plus, Search, X, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor, progressColor } from '../../utils/formatters'
 import ProjectDetail from './ProjectDetail'
@@ -11,7 +11,7 @@ const types = ['Tous', 'Commercial', 'Résidentiel', 'Municipal', 'Institutionne
 const statuses = ['Tous', 'En cours', 'Planification', 'Soumission acceptée', 'Terminé', 'En pause']
 
 function ProjectList() {
-  const { data, add } = useData()
+  const { data, add, remove } = useData()
   const [searchParams, setSearchParams] = useSearchParams()
   const clientFilter = searchParams.get('client') || ''
 
@@ -40,6 +40,19 @@ function ProjectList() {
     { name: 'address', label: 'Adresse du chantier', colSpan: 2, placeholder: 'ex: 456 rue des Pins, Laval, QC' },
     { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Description des travaux…' },
   ]
+
+  const handleDelete = (p) => {
+    const nInvoices = data.invoices.filter(i => i.projectId === p.id || i.project === p.code).length
+    const nHours = data.timesheets.filter(t => t.projectId === p.id || t.project === p.code).length
+    const linked = [
+      nInvoices > 0 && `${nInvoices} facture(s)`,
+      nHours > 0 && `${nHours} entrée(s) d'heures`,
+    ].filter(Boolean)
+    const msg = linked.length > 0
+      ? `Supprimer le projet « ${p.name} » (${p.code}) ?\n\nAttention : ce projet a ${linked.join(' et ')}. Ces documents resteront dans l'historique.\n\nCette action est définitive.`
+      : `Supprimer le projet « ${p.name} » (${p.code}) ? Cette action est définitive.`
+    if (window.confirm(msg)) remove('projects', p.id)
+  }
 
   const handleCreate = (values) => {
     const year = new Date().getFullYear()
@@ -109,6 +122,7 @@ function ProjectList() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Avancement</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Budget</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Fin prévue</th>
+              <th className="px-3 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -144,6 +158,16 @@ function ProjectList() {
                     </p>
                   </td>
                   <td className="px-4 py-3.5 text-sm text-slate-600">{formatDate(p.endDate)}</td>
+                  <td className="px-3 py-3.5">
+                    <button
+                      onClick={() => handleDelete(p)}
+                      className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                      aria-label={`Supprimer ${p.name}`}
+                      title="Supprimer ce projet"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               )
             })}
