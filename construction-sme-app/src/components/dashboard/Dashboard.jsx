@@ -7,7 +7,8 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { kpis, revenueByMonth, projectTypeData, projects, invoices, alerts, timesheets } from '../../data/mockData'
+import { kpis, revenueByMonth, projectTypeData, alerts } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
 import clsx from 'clsx'
 
@@ -58,6 +59,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const caProgress = Math.round((kpis.chiffreAffairesAnnuel / kpis.chiffreAffairesObjectif) * 100)
+  const { data } = useData()
+  const { projects, invoices, timesheets } = data
   const activeProjects = projects.filter(p => p.status === 'En cours')
   const pendingInvoices = invoices.filter(i => i.status !== 'Payée')
   const lateTInvoices = invoices.filter(i => i.status === 'En retard')

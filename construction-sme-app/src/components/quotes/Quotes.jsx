@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { Plus, Search, FileText, Send, CheckCircle, XCircle, Clock, Eye } from 'lucide-react'
-import { quotes } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
 import QuoteDetail from './QuoteDetail'
 import clsx from 'clsx'
-import { Routes, Route } from 'react-router-dom'
-import { Link } from 'react-router-dom'
+import { Routes, Route, Link, useNavigate } from 'react-router-dom'
 
 const StatusIcon = ({ s }) => {
   if (s === 'Acceptée') return <CheckCircle size={14} className="text-emerald-500" />
@@ -16,6 +15,9 @@ const StatusIcon = ({ s }) => {
 }
 
 function QuoteList() {
+  const { data } = useData()
+  const navigate = useNavigate()
+  const quotes = data.quotes
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('Tous')
 
@@ -35,7 +37,7 @@ function QuoteList() {
           <h2 className="section-title">Soumissions</h2>
           <p className="text-sm text-slate-500 mt-0.5">Créez et suivez vos soumissions client</p>
         </div>
-        <button className="btn-primary"><Plus size={16} /> Nouvelle soumission</button>
+        <button onClick={() => navigate('/estimateur/nouveau')} className="btn-primary"><Plus size={16} /> Nouvelle soumission</button>
       </div>
 
       {/* KPIs */}

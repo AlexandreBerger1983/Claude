@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Calendar as CalIcon } from 'lucide-react'
-import { projects } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatDate, statusColor } from '../../utils/formatters'
 import clsx from 'clsx'
 
@@ -10,8 +10,11 @@ const DAY_NAMES_FR = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 const projectColors = ['bg-brand-500', 'bg-blue-500', 'bg-violet-500', 'bg-emerald-500', 'bg-amber-500']
 
 export default function Calendar() {
-  const [year, setYear] = useState(2026)
-  const [month, setMonth] = useState(5) // 0-indexed = June
+  const { data } = useData()
+  const projects = data.projects
+  const now = new Date()
+  const [year, setYear] = useState(now.getFullYear())
+  const [month, setMonth] = useState(now.getMonth())
 
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
@@ -32,7 +35,7 @@ export default function Calendar() {
     Array.from({ length: daysInMonth }, (_, i) => i + 1)
   )
 
-  const today = new Date('2026-06-28')
+  const today = new Date()
   const isToday = (day) => day && year === today.getFullYear() && month === today.getMonth() && day === today.getDate()
 
   return (

@@ -3,36 +3,68 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts'
-import { revenueByMonth, projects, kpis } from '../../data/mockData'
+import { revenueByMonth, kpis } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatCurrency } from '../../utils/formatters'
-
-const budgetData = projects.slice(0, 4).map(p => ({
-  name: p.code,
-  Budget: p.budgetTotal,
-  Dépensé: p.budgetSpent,
-}))
+import { downloadCsv } from '../../utils/csv'
 
 const marginData = revenueByMonth.filter(m => m.revenus > 0).map(m => ({
   mois: m.mois,
   'Marge %': m.revenus > 0 ? Math.round((m.marge / m.revenus) * 100) : 0,
 }))
 
-const projectStatusData = [
-  { name: 'En cours', value: 3, fill: '#3b82f6' },
-  { name: 'Planification', value: 1, fill: '#8b5cf6' },
-  { name: 'Soumission acceptée', value: 1, fill: '#10b981' },
-  { name: 'Terminé', value: 1, fill: '#94a3b8' },
-]
+const STATUS_FILLS = {
+  'En cours': '#3b82f6',
+  'Planification': '#8b5cf6',
+  'Soumission acceptée': '#10b981',
+  'Terminé': '#94a3b8',
+  'En pause': '#f59e0b',
+}
 
 export default function Reports() {
+  const { data } = useData()
+  const projects = data.projects
+
+  const budgetData = projects.slice(0, 6).map(p => ({
+    name: p.code,
+    Budget: p.budgetTotal,
+    Dépensé: p.budgetSpent,
+  }))
+
+  const statusCounts = {}
+  for (const p of projects) statusCounts[p.status] = (statusCounts[p.status] || 0) + 1
+  const projectStatusData = Object.entries(statusCounts).map(([name, value]) => ({
+    name, value, fill: STATUS_FILLS[name] ?? '#94a3b8',
+  }))
+
+  const exportRevenueCsv = () =>
+    downloadCsv('revenus-mensuels.csv',
+      ['Mois', 'Revenus', 'Dépenses', 'Marge'],
+      revenueByMonth.map(m => [m.mois, m.revenus, m.depenses, m.marge]))
+
+  const exportProjectsCsv = () =>
+    downloadCsv('etat-des-projets.csv',
+      ['Code', 'Projet', 'Client', 'Statut', 'Avancement %', 'Budget', 'Dépensé'],
+      projects.map(p => [p.code, p.name, p.client, p.status, p.progress, p.budgetTotal, p.budgetSpent]))
+
+  const exportPayrollCsv = () =>
+    downloadCsv('masse-salariale.csv',
+      ['Employé', 'Rôle', 'Taux horaire', 'Heures ce mois', 'Coût estimé'],
+      data.employees.map(e => [e.name, e.role, e.hourlyRate, e.hrsThisMonth || 0, ((e.hrsThisMonth || 0) * e.hourlyRate).toFixed(2)]))
+
+  const exportOverdueCsv = () =>
+    downloadCsv('factures-en-souffrance.csv',
+      ['Facture', 'Client', 'Projet', 'Échéance', 'Total'],
+      data.invoices.filter(i => i.status === 'En retard').map(i => [i.number, i.client, i.project, i.dueDate, i.total]))
+
   return (
-    <div className="space-y-6">
+    <div id="devis" className="space-y-6">
       <div className="page-header">
         <div>
           <h2 className="section-title">Rapports & Analytiques</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Exercice 2026 · Données au 28 juin 2026</p>
+          <p className="text-sm text-slate-500 mt-0.5">Exercice en cours · Données à jour</p>
         </div>
-        <button className="btn-secondary"><Download size={15} /> Exporter rapport PDF</button>
+        <button onClick={() => window.print()} className="btn-secondary no-print"><Download size={15} /> Exporter rapport PDF</button>
       </div>
 
       {/* KPI row */}
@@ -62,8 +94,8 @@ export default function Reports() {
       {/* Revenue chart */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-slate-700">Revenus mensuels 2026</h3>
-          <button className="btn-ghost text-xs"><Download size={13} /> CSV</button>
+          <h3 className="font-semibold text-slate-700">Revenus mensuels</h3>
+          <button onClick={exportRevenueCsv} className="btn-ghost text-xs no-print"><Download size={13} /> CSV</button>
         </div>
         <ResponsiveContainer width="100%" height={250}>
           <BarChart data={revenueByMonth} margin={{ top: 5, right: 10, bottom: 0, left: 10 }}>
@@ -155,16 +187,16 @@ export default function Reports() {
       </div>
 
       {/* Downloadable reports */}
-      <div className="card">
+      <div className="card no-print">
         <h3 className="font-semibold text-slate-700 mb-4">Rapports disponibles</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {[
-            { title: 'Rapport financier mensuel', sub: 'Juin 2026 · PDF', color: 'bg-brand-50 text-brand-600 border-brand-200' },
-            { title: 'État des projets', sub: 'Tous projets actifs · PDF', color: 'bg-blue-50 text-blue-600 border-blue-200' },
-            { title: 'Masse salariale', sub: 'Juin 2026 · CSV', color: 'bg-violet-50 text-violet-600 border-violet-200' },
-            { title: 'Factures en souffrance', sub: 'Au 28 juin 2026 · PDF', color: 'bg-red-50 text-red-600 border-red-200' },
+            { title: 'Rapport financier mensuel', sub: 'Revenus / dépenses · CSV', color: 'bg-brand-50 text-brand-600 border-brand-200', action: exportRevenueCsv },
+            { title: 'État des projets', sub: 'Tous les projets · CSV', color: 'bg-blue-50 text-blue-600 border-blue-200', action: exportProjectsCsv },
+            { title: 'Masse salariale', sub: 'Par employé · CSV', color: 'bg-violet-50 text-violet-600 border-violet-200', action: exportPayrollCsv },
+            { title: 'Factures en souffrance', sub: 'En retard seulement · CSV', color: 'bg-red-50 text-red-600 border-red-200', action: exportOverdueCsv },
           ].map((r, i) => (
-            <button key={i} className={`flex items-start gap-3 p-3 rounded-xl border text-left hover:shadow-sm transition-shadow ${r.color}`}>
+            <button key={i} onClick={r.action} className={`flex items-start gap-3 p-3 rounded-xl border text-left hover:shadow-sm transition-shadow ${r.color}`}>
               <Download size={16} className="flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold">{r.title}</p>

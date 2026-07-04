@@ -5,7 +5,7 @@ import {
   UserRound, Ruler, Hammer, ReceiptText, ChevronDown, Home, X,
   SlidersHorizontal, PartyPopper,
 } from 'lucide-react'
-import { clients } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { CATALOG, CATEGORIES, CATEGORY_META, ROOM_PRESETS, PROJECT_TYPE_CHIPS } from '../../data/estimatorCatalog'
 import { formatCurrency } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
@@ -26,6 +26,8 @@ const STEPS = [
 
 // ─── Étape 1 : Le client ──────────────────────────────────────────────────────
 function StepClient({ draft, update }) {
+  const { data } = useData()
+  const clients = data.clients
   const c = draft.client
 
   const pickExisting = (client) => {
@@ -736,6 +738,7 @@ function StepQuote({ draft, update, onSave }) {
 // ─── Assistant principal ──────────────────────────────────────────────────────
 export default function EstimatorWizard() {
   const navigate = useNavigate()
+  const { data, add } = useData()
   const [draft, setDraft] = useLocalStorage(DRAFT_KEY, null)
   const [saved, setSaved] = useLocalStorage(SAVED_KEY, [])
   const [justSaved, setJustSaved] = useState(false)
@@ -787,6 +790,26 @@ export default function EstimatorWizard() {
       savedAt: new Date().toISOString(),
     }
     setSaved(prev => [...prev, quote])
+
+    // Le devis apparaît aussi dans le module Soumissions, pour un suivi
+    // centralisé (statut Brouillon jusqu'à envoi/acceptation).
+    const clientObj = data.clients.find(cl => cl.id === Number(draft.client.clientId))
+    add('quotes', {
+      number: quote.number,
+      title: draft.projectType ? `${draft.projectType} — ${draft.client.name}` : `Devis — ${draft.client.name}`,
+      clientId: clientObj?.id ?? null,
+      client: draft.client.name,
+      date: new Date().toISOString().slice(0, 10),
+      validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      status: 'Brouillon',
+      subtotal: totals.pretax,
+      tps: totals.tps,
+      tvq: totals.tvq,
+      total: totals.total,
+      estimator: '',
+      items: [],
+    })
+
     setDraft(null)
     setJustSaved(true)
     setTimeout(() => navigate('/estimateur'), 1600)

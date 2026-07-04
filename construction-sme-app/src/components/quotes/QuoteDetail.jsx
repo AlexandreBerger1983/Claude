@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Printer, Send, CheckCircle } from 'lucide-react'
-import { quotes } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
@@ -8,7 +8,8 @@ import clsx from 'clsx'
 
 export default function QuoteDetail() {
   const { id } = useParams()
-  const quote = quotes.find(q => q.id === Number(id))
+  const { data, update } = useData()
+  const quote = data.quotes.find(q => q.id === Number(id))
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   if (!quote) return <div className="text-slate-500 p-8">Soumission introuvable</div>
 
@@ -24,16 +25,22 @@ export default function QuoteDetail() {
             <span className={clsx('badge', statusColor[quote.status])}>{quote.status}</span>
           </div>
           <div className="flex gap-2">
-            <button className="btn-secondary"><Printer size={15} /> Imprimer</button>
-            <button className="btn-secondary"><Send size={15} /> Envoyer</button>
+            <button onClick={() => window.print()} className="btn-secondary"><Printer size={15} /> Imprimer</button>
+            {quote.status !== 'Envoyée' && quote.status !== 'Acceptée' && (
+              <button onClick={() => update('quotes', quote.id, { status: 'Envoyée' })} className="btn-secondary">
+                <Send size={15} /> Marquer envoyée
+              </button>
+            )}
             {quote.status !== 'Acceptée' && (
-              <button className="btn-primary"><CheckCircle size={15} /> Marquer acceptée</button>
+              <button onClick={() => update('quotes', quote.id, { status: 'Acceptée' })} className="btn-primary">
+                <CheckCircle size={15} /> Marquer acceptée
+              </button>
             )}
           </div>
         </div>
       </div>
 
-      <div className="card">
+      <div id="devis" className="card">
         {/* Header */}
         <div className="flex justify-between mb-8">
           <div>

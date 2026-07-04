@@ -1,23 +1,49 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Phone, Mail, Building2, TrendingUp } from 'lucide-react'
-import { clients } from '../../data/mockData'
+import { useData } from '../../store/DataContext'
 import { formatCurrency, statusColor } from '../../utils/formatters'
+import FormModal from '../ui/FormModal'
 import clsx from 'clsx'
 
-const types = ['Tous', 'Entreprise', 'Municipalité', 'Copropriété', 'Institution']
+const types = ['Tous', 'Entreprise', 'Municipalité', 'Copropriété', 'Institution', 'Particulier']
+
+const clientFields = [
+  { name: 'name', label: 'Nom du client', required: true, placeholder: 'ex: Constructions Untel Inc.', colSpan: 2 },
+  { name: 'contact', label: 'Personne contact', placeholder: 'ex: Jean Tremblay' },
+  { name: 'type', label: 'Type', type: 'select', options: ['Entreprise', 'Municipalité', 'Copropriété', 'Institution', 'Particulier'], default: 'Entreprise' },
+  { name: 'phone', label: 'Téléphone', type: 'tel', placeholder: 'ex: 514-555-1234' },
+  { name: 'email', label: 'Courriel', type: 'email', placeholder: 'ex: info@client.ca' },
+  { name: 'address', label: 'Adresse', colSpan: 2, placeholder: 'ex: 123 rue Principale, Montréal, QC' },
+  { name: 'neq', label: 'NEQ (facultatif)', placeholder: 'ex: 1234567890' },
+  { name: 'status', label: 'Statut', type: 'select', options: ['Actif', 'Inactif'], default: 'Actif' },
+  { name: 'notes', label: 'Notes', type: 'textarea', placeholder: 'Notes internes sur ce client…' },
+]
 
 export default function Clients() {
+  const { data, add, update } = useData()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('Tous')
   const [statusF, setStatusF] = useState('Tous')
+  const [modal, setModal] = useState(null) // null | 'new' | client à modifier
 
+  const clients = data.clients
   const filtered = clients.filter(c =>
     (type === 'Tous' || c.type === type) &&
     (statusF === 'Tous' || c.status === statusF) &&
-    (c.name.toLowerCase().includes(search.toLowerCase()) || c.contact.toLowerCase().includes(search.toLowerCase()))
+    (c.name.toLowerCase().includes(search.toLowerCase()) || (c.contact || '').toLowerCase().includes(search.toLowerCase()))
   )
 
-  const totalCA = clients.reduce((s, c) => s + c.ca, 0)
+  const totalCA = clients.reduce((s, c) => s + (c.ca || 0), 0)
+
+  const handleSubmit = (values) => {
+    if (modal === 'new') {
+      add('clients', { ...values, ca: 0, since: new Date().toISOString().slice(0, 10) })
+    } else {
+      update('clients', modal.id, values)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -26,7 +52,7 @@ export default function Clients() {
           <h2 className="section-title">Clients</h2>
           <p className="text-sm text-slate-500 mt-0.5">{clients.length} clients — {formatCurrency(totalCA, true)} de CA généré</p>
         </div>
-        <button className="btn-primary"><Plus size={16} /> Nouveau client</button>
+        <button onClick={() => setModal('new')} className="btn-primary"><Plus size={16} /> Nouveau client</button>
       </div>
 
       {/* Filters */}
@@ -49,14 +75,14 @@ export default function Clients() {
       {/* Cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map(c => (
-          <div key={c.id} className="card hover:shadow-md transition-shadow cursor-pointer group">
+          <div key={c.id} className="card hover:shadow-md transition-shadow group">
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center font-bold text-brand-600 text-sm flex-shrink-0">
                   {c.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-800 text-sm leading-tight group-hover:text-brand-600 transition-colors">{c.name}</p>
+                  <p className="font-semibold text-slate-800 text-sm leading-tight">{c.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-xs text-slate-400">{c.type}</span>
                     <span className={clsx('badge text-[10px]', statusColor[c.status])}>{c.status}</span>
@@ -66,18 +92,24 @@ export default function Clients() {
             </div>
 
             <div className="space-y-1.5 text-xs">
-              <div className="flex items-center gap-2 text-slate-600">
-                <Building2 size={12} className="text-slate-400 flex-shrink-0" />
-                <span className="truncate">{c.contact}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Phone size={12} className="text-slate-400 flex-shrink-0" />
-                <span>{c.phone}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Mail size={12} className="text-slate-400 flex-shrink-0" />
-                <span className="truncate">{c.email}</span>
-              </div>
+              {c.contact && (
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Building2 size={12} className="text-slate-400 flex-shrink-0" />
+                  <span className="truncate">{c.contact}</span>
+                </div>
+              )}
+              {c.phone && (
+                <a href={`tel:${c.phone}`} className="flex items-center gap-2 text-slate-600 hover:text-brand-600">
+                  <Phone size={12} className="text-slate-400 flex-shrink-0" />
+                  <span>{c.phone}</span>
+                </a>
+              )}
+              {c.email && (
+                <a href={`mailto:${c.email}`} className="flex items-center gap-2 text-slate-600 hover:text-brand-600">
+                  <Mail size={12} className="text-slate-400 flex-shrink-0" />
+                  <span className="truncate">{c.email}</span>
+                </a>
+              )}
             </div>
 
             {c.notes && (
@@ -87,12 +119,17 @@ export default function Clients() {
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-emerald-600">
                 <TrendingUp size={13} />
-                <span className="text-xs font-semibold">{formatCurrency(c.ca, true)}</span>
+                <span className="text-xs font-semibold">{formatCurrency(c.ca || 0, true)}</span>
                 <span className="text-xs text-slate-400">CA total</span>
               </div>
               <div className="flex gap-1.5">
-                <button className="btn-ghost py-1 px-2 text-xs">Modifier</button>
-                <button className="btn-ghost py-1 px-2 text-xs text-brand-600">Voir projets</button>
+                <button onClick={() => setModal(c)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
+                <button
+                  onClick={() => navigate(`/projets?client=${encodeURIComponent(c.name)}`)}
+                  className="btn-ghost py-1 px-2 text-xs text-brand-600"
+                >
+                  Voir projets
+                </button>
               </div>
             </div>
           </div>
@@ -101,6 +138,16 @@ export default function Clients() {
 
       {filtered.length === 0 && (
         <div className="text-center py-12 text-slate-400 text-sm card">Aucun client trouvé</div>
+      )}
+
+      {modal && (
+        <FormModal
+          title={modal === 'new' ? 'Nouveau client' : `Modifier — ${modal.name}`}
+          fields={clientFields}
+          initialValues={modal === 'new' ? {} : modal}
+          onSubmit={handleSubmit}
+          onClose={() => setModal(null)}
+        />
       )}
     </div>
   )

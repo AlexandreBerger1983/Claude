@@ -1,13 +1,20 @@
 import { useState } from 'react'
-import { Plus, CheckCircle, Clock, Search, Filter } from 'lucide-react'
-import { timesheets, employees, projects } from '../../data/mockData'
+import { Plus, CheckCircle, Clock, Search, Download } from 'lucide-react'
+import { useData } from '../../store/DataContext'
 import { formatDate, formatCurrency } from '../../utils/formatters'
+import { downloadCsv } from '../../utils/csv'
+import FormModal from '../ui/FormModal'
 import clsx from 'clsx'
 
 export default function Timesheets() {
+  const { data, add, update } = useData()
   const [search, setSearch] = useState('')
   const [empFilter, setEmpFilter] = useState('Tous')
   const [approvedFilter, setApprovedFilter] = useState('Tous')
+  const [showNew, setShowNew] = useState(false)
+
+  const timesheets = data.timesheets
+  const employees = data.employees
 
   const filtered = timesheets.filter(t =>
     (empFilter === 'Tous' || t.employee === empFilter) &&
@@ -21,9 +28,50 @@ export default function Timesheets() {
 
   const byEmployee = employees.map(e => ({
     ...e,
-    entries: timesheets.filter(t => t.employeeId === e.id),
     totalHours: timesheets.filter(t => t.employeeId === e.id).reduce((s, t) => s + t.hours, 0),
   }))
+
+  const entryFields = [
+    { name: 'employee', label: 'Employé', type: 'select', required: true, options: ['', ...employees.filter(e => e.status === 'Actif').map(e => e.name)] },
+    { name: 'project', label: 'Projet', type: 'select', required: true, options: ['', ...data.projects.map(p => p.code)] },
+    { name: 'date', label: 'Date', type: 'date', required: true, default: new Date().toISOString().slice(0, 10) },
+    { name: 'hours', label: 'Heures', type: 'number', required: true, step: '0.5', default: 8 },
+    { name: 'type', label: 'Type', type: 'select', options: ['Régulier', 'Heures supp.'], default: 'Régulier' },
+    { name: 'description', label: 'Description du travail', type: 'textarea', placeholder: 'ex: Pose de gypse au 2e étage' },
+  ]
+
+  const handleCreate = (values) => {
+    const emp = employees.find(e => e.name === values.employee)
+    const proj = data.projects.find(p => p.code === values.project)
+    add('timesheets', {
+      ...values,
+      employeeId: emp?.id ?? null,
+      projectId: proj?.id ?? null,
+      approved: false,
+    })
+  }
+
+  const approve = (t) => update('timesheets', t.id, { approved: true })
+  const approveAll = () => {
+    for (const t of timesheets.filter(t => !t.approved)) update('timesheets', t.id, { approved: true })
+  }
+
+  const exportCsv = () => {
+    downloadCsv(
+      `feuilles-de-temps-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Date', 'Employé', 'Projet', 'Description', 'Type', 'Heures', 'Taux', 'Coût', 'Statut'],
+      filtered.map(t => {
+        const emp = employees.find(e => e.id === t.employeeId)
+        return [
+          t.date, t.employee, t.project, t.description, t.type,
+          String(t.hours).replace('.', ','),
+          emp ? String(emp.hourlyRate).replace('.', ',') : '',
+          emp ? String((t.hours * emp.hourlyRate).toFixed(2)).replace('.', ',') : '',
+          t.approved ? 'Approuvé' : 'En attente',
+        ]
+      })
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -33,8 +81,11 @@ export default function Timesheets() {
           <p className="text-sm text-slate-500 mt-0.5">{pending} entrée(s) en attente d'approbation</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary"><Filter size={15} /> Exporter CSV</button>
-          <button className="btn-primary"><Plus size={16} /> Nouvelle entrée</button>
+          {pending > 0 && (
+            <button onClick={approveAll} className="btn-secondary text-emerald-600"><CheckCircle size={15} /> Tout approuver</button>
+          )}
+          <button onClick={exportCsv} className="btn-secondary"><Download size={15} /> Exporter CSV</button>
+          <button onClick={() => setShowNew(true)} className="btn-primary"><Plus size={16} /> Nouvelle entrée</button>
         </div>
       </div>
 
@@ -49,7 +100,7 @@ export default function Timesheets() {
                   {e.avatar}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-700 truncate">{e.name.split(' ')[0]} {e.name.split(' ').slice(1).join(' ').slice(0, 8)}</p>
+                  <p className="text-xs font-semibold text-slate-700 truncate">{e.name}</p>
                   <p className="text-xs text-slate-400">{e.role}</p>
                 </div>
               </div>
@@ -84,8 +135,8 @@ export default function Timesheets() {
       </div>
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[860px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
@@ -107,9 +158,9 @@ export default function Timesheets() {
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                        {emp?.avatar}
+                        {emp?.avatar ?? '—'}
                       </div>
-                      <span className="text-sm font-medium text-slate-700">{t.employee.split(' ')[0]} {t.employee.split(' ').slice(-1)}</span>
+                      <span className="text-sm font-medium text-slate-700">{t.employee}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3.5 text-xs text-slate-500">{t.project}</td>
@@ -133,7 +184,7 @@ export default function Timesheets() {
                   </td>
                   <td className="px-4 py-3.5">
                     {!t.approved && (
-                      <button className="btn-ghost text-xs text-emerald-600 py-1 px-2">Approuver</button>
+                      <button onClick={() => approve(t)} className="btn-ghost text-xs text-emerald-600 py-1 px-2">Approuver</button>
                     )}
                   </td>
                 </tr>
@@ -141,7 +192,20 @@ export default function Timesheets() {
             })}
           </tbody>
         </table>
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-slate-400 text-sm">Aucune entrée trouvée</div>
+        )}
       </div>
+
+      {showNew && (
+        <FormModal
+          title="Nouvelle entrée de temps"
+          fields={entryFields}
+          onSubmit={handleCreate}
+          onClose={() => setShowNew(false)}
+          submitLabel="Ajouter"
+        />
+      )}
     </div>
   )
 }

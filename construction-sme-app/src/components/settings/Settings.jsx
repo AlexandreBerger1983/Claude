@@ -1,12 +1,20 @@
 import { useState } from 'react'
-import { Building2, Save, Check, Upload, X } from 'lucide-react'
+import { Building2, Save, Check, Upload, X, RotateCcw } from 'lucide-react'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
+import { useData } from '../../store/DataContext'
 import clsx from 'clsx'
 
 export default function Settings() {
   const [settings, setSettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
+  const { resetToSeed } = useData()
   const [saved, setSaved] = useState(false)
+
+  const handleReset = () => {
+    if (window.confirm('Remettre les données de démonstration ? Vos clients, projets, factures et autres données saisies seront remplacés par les exemples de départ. Cette action est irréversible.')) {
+      resetToSeed()
+    }
+  }
 
   const update = (field, value) => setSettings(s => ({ ...s, [field]: value }))
 
@@ -181,6 +189,18 @@ export default function Settings() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Zone données */}
+      <div className="card border-red-100">
+        <h3 className="font-semibold text-slate-800 mb-1">Données de l'application</h3>
+        <p className="text-xs text-slate-500 mb-3">
+          Toutes vos données (clients, projets, factures, devis, paie…) sont enregistrées dans ce navigateur.
+          Ce bouton efface tout et remet les exemples de départ.
+        </p>
+        <button onClick={handleReset} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50">
+          <RotateCcw size={15} /> Réinitialiser les données de démonstration
+        </button>
       </div>
 
       {/* Aperçu */}

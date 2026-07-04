@@ -1,25 +1,60 @@
 import { useState } from 'react'
-import { Link, Routes, Route } from 'react-router-dom'
-import { Plus, Search, Filter, ChevronDown } from 'lucide-react'
-import { projects } from '../../data/mockData'
+import { Link, Routes, Route, useSearchParams } from 'react-router-dom'
+import { Plus, Search, X } from 'lucide-react'
+import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor, progressColor } from '../../utils/formatters'
 import ProjectDetail from './ProjectDetail'
+import FormModal from '../ui/FormModal'
 import clsx from 'clsx'
 
 const types = ['Tous', 'Commercial', 'Résidentiel', 'Municipal', 'Institutionnel', 'Industriel']
-const statuses = ['Tous', 'En cours', 'Planification', 'Soumission acceptée', 'Terminé']
+const statuses = ['Tous', 'En cours', 'Planification', 'Soumission acceptée', 'Terminé', 'En pause']
 
 function ProjectList() {
+  const { data, add } = useData()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const clientFilter = searchParams.get('client') || ''
+
   const [search, setSearch] = useState('')
   const [type, setType] = useState('Tous')
   const [status, setStatus] = useState('Tous')
-  const [view, setView] = useState('table')
+  const [showNew, setShowNew] = useState(false)
 
+  const projects = data.projects
   const filtered = projects.filter(p =>
+    (!clientFilter || p.client === clientFilter) &&
     (type === 'Tous' || p.type === type) &&
     (status === 'Tous' || p.status === status) &&
     (p.name.toLowerCase().includes(search.toLowerCase()) || p.client.toLowerCase().includes(search.toLowerCase()) || p.code.toLowerCase().includes(search.toLowerCase()))
   )
+
+  const projectFields = [
+    { name: 'name', label: 'Nom du projet', required: true, colSpan: 2, placeholder: 'ex: Rénovation cuisine — Résidence Tremblay' },
+    { name: 'client', label: 'Client', type: 'select', required: true, options: ['', ...data.clients.map(c => c.name)] },
+    { name: 'type', label: 'Type', type: 'select', options: ['Commercial', 'Résidentiel', 'Municipal', 'Institutionnel', 'Industriel'], default: 'Résidentiel' },
+    { name: 'manager', label: 'Responsable', type: 'select', options: ['', ...data.employees.filter(e => e.status === 'Actif').map(e => e.name)] },
+    { name: 'status', label: 'Statut', type: 'select', options: ['Planification', 'En cours', 'Soumission acceptée', 'En pause', 'Terminé'], default: 'Planification' },
+    { name: 'startDate', label: 'Date de début', type: 'date' },
+    { name: 'endDate', label: 'Fin prévue', type: 'date' },
+    { name: 'budgetTotal', label: 'Budget total ($)', type: 'number', step: '1000', default: 0 },
+    { name: 'address', label: 'Adresse du chantier', colSpan: 2, placeholder: 'ex: 456 rue des Pins, Laval, QC' },
+    { name: 'description', label: 'Description', type: 'textarea', placeholder: 'Description des travaux…' },
+  ]
+
+  const handleCreate = (values) => {
+    const year = new Date().getFullYear()
+    const count = projects.filter(p => p.code?.includes(String(year))).length
+    const clientObj = data.clients.find(c => c.name === values.client)
+    add('projects', {
+      ...values,
+      code: `PRJ-${year}-${String(count + 1).padStart(3, '0')}`,
+      clientId: clientObj?.id ?? null,
+      budgetSpent: 0,
+      progress: 0,
+      phases: [],
+      tasks: [],
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -28,10 +63,20 @@ function ProjectList() {
           <h2 className="section-title">{filtered.length} projet{filtered.length !== 1 ? 's' : ''}</h2>
           <p className="text-sm text-slate-500 mt-0.5">Gérez tous vos chantiers en un seul endroit</p>
         </div>
-        <button className="btn-primary">
+        <button onClick={() => setShowNew(true)} className="btn-primary">
           <Plus size={16} /> Nouveau projet
         </button>
       </div>
+
+      {/* Filtre client actif (venant de la page Clients) */}
+      {clientFilter && (
+        <div className="flex items-center gap-2 bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 text-sm text-brand-700">
+          <span>Projets du client : <strong>{clientFilter}</strong></span>
+          <button onClick={() => setSearchParams({})} className="ml-auto p-1 rounded hover:bg-brand-100">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card p-4 flex flex-wrap items-center gap-3">
@@ -53,8 +98,8 @@ function ProjectList() {
       </div>
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Projet</th>
@@ -68,13 +113,13 @@ function ProjectList() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(p => {
-              const pct = Math.round((p.budgetSpent / p.budgetTotal) * 100)
+              const pct = p.budgetTotal ? Math.round((p.budgetSpent / p.budgetTotal) * 100) : 0
               return (
                 <tr key={p.id} className="table-row-hover">
                   <td className="px-5 py-3.5">
                     <Link to={`/projets/${p.id}`} className="group">
                       <p className="font-semibold text-slate-800 group-hover:text-brand-600 transition-colors">{p.name}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{p.code} · {p.manager}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{p.code}{p.manager ? ` · ${p.manager}` : ''}</p>
                     </Link>
                   </td>
                   <td className="px-4 py-3.5 text-slate-600 text-sm">{p.client}</td>
@@ -108,6 +153,16 @@ function ProjectList() {
           <div className="text-center py-12 text-slate-400 text-sm">Aucun projet trouvé</div>
         )}
       </div>
+
+      {showNew && (
+        <FormModal
+          title="Nouveau projet"
+          fields={projectFields}
+          onSubmit={handleCreate}
+          onClose={() => setShowNew(false)}
+          submitLabel="Créer le projet"
+        />
+      )}
     </div>
   )
 }

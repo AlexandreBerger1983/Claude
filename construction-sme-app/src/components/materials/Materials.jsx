@@ -1,24 +1,46 @@
 import { useState } from 'react'
-import { Plus, Search, AlertTriangle, Package } from 'lucide-react'
-import { materials } from '../../data/mockData'
+import { Plus, Minus, Search, AlertTriangle, Package } from 'lucide-react'
+import { useData } from '../../store/DataContext'
 import { formatCurrency } from '../../utils/formatters'
+import FormModal from '../ui/FormModal'
 import clsx from 'clsx'
 
-const categories = ['Tous', 'Cloisons', 'Ossature', 'Isolation', 'Électricité', 'Plafond', 'Plancher', 'Peinture', 'Fixation', 'Béton', 'Plomberie']
+const categories = ['Tous', 'Cloisons', 'Ossature', 'Isolation', 'Électricité', 'Plafond', 'Plancher', 'Peinture', 'Fixation', 'Béton', 'Plomberie', 'Autre']
+
+const materialFields = [
+  { name: 'name', label: "Nom de l'article", required: true, colSpan: 2, placeholder: 'ex: Panneau de gypse 5/8" (4x8)' },
+  { name: 'category', label: 'Catégorie', type: 'select', options: categories.slice(1), default: 'Autre' },
+  { name: 'unit', label: 'Unité', placeholder: 'ex: feuille, boîte, m²', default: 'unité' },
+  { name: 'stock', label: 'Quantité en stock', type: 'number', default: 0 },
+  { name: 'minStock', label: 'Stock minimum (alerte)', type: 'number', default: 0 },
+  { name: 'unitCost', label: 'Coût unitaire ($)', type: 'number', step: '0.01', default: 0 },
+  { name: 'supplier', label: 'Fournisseur', placeholder: 'ex: BMR Pro' },
+  { name: 'location', label: 'Emplacement', placeholder: 'ex: Entrepôt A, Camion 2', default: 'Entrepôt' },
+]
 
 export default function Materials() {
+  const { data, add, update } = useData()
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('Tous')
   const [showLowOnly, setShowLowOnly] = useState(false)
+  const [modal, setModal] = useState(null) // null | 'new' | article
 
+  const materials = data.materials
   const filtered = materials.filter(m =>
     (cat === 'Tous' || m.category === cat) &&
-    (!showLowOnly || m.stock <= m.minStock) &&
-    (m.name.toLowerCase().includes(search.toLowerCase()) || m.supplier.toLowerCase().includes(search.toLowerCase()))
+    (!showLowOnly || (m.minStock > 0 && m.stock <= m.minStock)) &&
+    (m.name.toLowerCase().includes(search.toLowerCase()) || (m.supplier || '').toLowerCase().includes(search.toLowerCase()))
   )
 
   const lowStock = materials.filter(m => m.minStock > 0 && m.stock <= m.minStock)
   const totalValue = materials.reduce((s, m) => s + m.stock * m.unitCost, 0)
+
+  const adjustStock = (m, delta) => update('materials', m.id, { stock: Math.max(0, m.stock + delta) })
+
+  const handleSubmit = (values) => {
+    if (modal === 'new') add('materials', values)
+    else update('materials', modal.id, values)
+  }
 
   return (
     <div className="space-y-4">
@@ -27,7 +49,7 @@ export default function Materials() {
           <h2 className="section-title">Matériaux & Inventaire</h2>
           <p className="text-sm text-slate-500 mt-0.5">Valeur inventaire: {formatCurrency(totalValue, true)} · {lowStock.length} article(s) sous le seuil</p>
         </div>
-        <button className="btn-primary"><Plus size={16} /> Ajouter article</button>
+        <button onClick={() => setModal('new')} className="btn-primary"><Plus size={16} /> Ajouter article</button>
       </div>
 
       {/* Low stock alert */}
@@ -89,8 +111,8 @@ export default function Materials() {
       </div>
 
       {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[950px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Article</th>
@@ -98,7 +120,7 @@ export default function Materials() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Fournisseur</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Emplacement</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Coût unit.</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Stock</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Stock</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Min.</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Valeur</th>
               <th className="px-4 py-3"></th>
@@ -124,23 +146,49 @@ export default function Materials() {
                   <td className="px-4 py-3.5 text-sm text-slate-600">{m.supplier}</td>
                   <td className="px-4 py-3.5 text-xs text-slate-500">{m.location}</td>
                   <td className="px-4 py-3.5 text-right font-medium text-slate-700">{formatCurrency(m.unitCost)}</td>
-                  <td className="px-4 py-3.5 text-right">
-                    <span className={clsx('font-bold text-sm', isLow ? 'text-amber-600' : 'text-slate-800')}>{m.stock}</span>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => adjustStock(m, -1)}
+                        className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600"
+                        aria-label="Retirer 1"
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <span className={clsx('font-bold text-sm w-10 text-center', isLow ? 'text-amber-600' : 'text-slate-800')}>{m.stock}</span>
+                      <button
+                        onClick={() => adjustStock(m, 1)}
+                        className="w-6 h-6 rounded-md bg-brand-50 hover:bg-brand-100 flex items-center justify-center text-brand-600"
+                        aria-label="Ajouter 1"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-4 py-3.5 text-right text-sm text-slate-500">{m.minStock || '—'}</td>
                   <td className="px-4 py-3.5 text-right font-semibold text-slate-700">{formatCurrency(m.stock * m.unitCost)}</td>
                   <td className="px-4 py-3.5">
-                    <div className="flex gap-1">
-                      <button className="btn-ghost py-1 px-2 text-xs">+</button>
-                      <button className="btn-ghost py-1 px-2 text-xs">−</button>
-                    </div>
+                    <button onClick={() => setModal(m)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
                   </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
+        {filtered.length === 0 && (
+          <div className="text-center py-12 text-slate-400 text-sm">Aucun article trouvé</div>
+        )}
       </div>
+
+      {modal && (
+        <FormModal
+          title={modal === 'new' ? 'Ajouter un article' : `Modifier — ${modal.name}`}
+          fields={materialFields}
+          initialValues={modal === 'new' ? {} : modal}
+          onSubmit={handleSubmit}
+          onClose={() => setModal(null)}
+        />
+      )}
     </div>
   )
 }
