@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Star, AlertTriangle, Shield, Phone, Mail } from 'lucide-react'
+import { Plus, Search, Star, AlertTriangle, Shield, Phone, Mail, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatDate, statusColor } from '../../utils/formatters'
 import FormModal from '../ui/FormModal'
@@ -18,7 +18,7 @@ const subFields = [
 ]
 
 export default function Subcontractors() {
-  const { data, add, update } = useData()
+  const { data, add, update, remove } = useData()
   const [search, setSearch] = useState('')
   const [tradeF, setTradeF] = useState('Tous')
   const [modal, setModal] = useState(null) // null | 'new' | sous-traitant
@@ -35,6 +35,13 @@ export default function Subcontractors() {
   const handleSubmit = (values) => {
     if (modal === 'new') add('subcontractors', { ...values, activeProjects: 0 })
     else update('subcontractors', modal.id, values)
+  }
+
+  const handleDelete = (s) => {
+    const msg = s.activeProjects > 0
+      ? `Supprimer « ${s.name} » ?\n\nAttention : ce sous-traitant est actif sur ${s.activeProjects} chantier(s).\n\nCette action est définitive.`
+      : `Supprimer « ${s.name} » ? Cette action est définitive.`
+    if (window.confirm(msg)) remove('subcontractors', s.id)
   }
 
   const relanceMailto = (s) =>
@@ -135,9 +142,17 @@ export default function Subcontractors() {
                   ))}
                   <span className="text-xs font-semibold text-slate-600 ml-1">{s.rating}</span>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 items-center">
                   <button onClick={() => setModal(s)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
                   <a href={`mailto:${s.email}`} className="btn-ghost py-1 px-2 text-xs text-brand-600">Contacter</a>
+                  <button
+                    onClick={() => handleDelete(s)}
+                    className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                    aria-label={`Supprimer ${s.name}`}
+                    title="Supprimer ce sous-traitant"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
             </div>

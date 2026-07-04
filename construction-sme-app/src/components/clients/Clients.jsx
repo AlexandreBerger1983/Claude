@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Phone, Mail, Building2, TrendingUp, Clock } from 'lucide-react'
+import { Plus, Search, Phone, Mail, Building2, TrendingUp, Clock, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, statusColor } from '../../utils/formatters'
 import FormModal from '../ui/FormModal'
@@ -21,7 +21,7 @@ const clientFields = [
 ]
 
 export default function Clients() {
-  const { data, add, update } = useData()
+  const { data, add, update, remove } = useData()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('Tous')
@@ -60,6 +60,21 @@ export default function Clients() {
     } else {
       update('clients', modal.id, values)
     }
+  }
+
+  const handleDelete = (client) => {
+    const nProjects = data.projects.filter(p => p.client === client.name).length
+    const nInvoices = data.invoices.filter(i => i.client === client.name).length
+    const nQuotes = data.quotes.filter(q => q.client === client.name).length
+    const linked = [
+      nProjects > 0 && `${nProjects} projet(s)`,
+      nInvoices > 0 && `${nInvoices} facture(s)`,
+      nQuotes > 0 && `${nQuotes} soumission(s)`,
+    ].filter(Boolean)
+    const msg = linked.length > 0
+      ? `Supprimer « ${client.name} » ?\n\nAttention : ce client a ${linked.join(', ')}. Ces documents resteront dans l'historique mais ne seront plus rattachés à une fiche client.\n\nCette action est définitive.`
+      : `Supprimer « ${client.name} » ? Cette action est définitive.`
+    if (window.confirm(msg)) remove('clients', client.id)
   }
 
   return (
@@ -150,13 +165,21 @@ export default function Clients() {
                   ) : null
                 })()}
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex gap-1 items-center">
                 <button onClick={() => setModal(c)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
                 <button
                   onClick={() => navigate(`/projets?client=${encodeURIComponent(c.name)}`)}
                   className="btn-ghost py-1 px-2 text-xs text-brand-600"
                 >
                   Voir projets
+                </button>
+                <button
+                  onClick={() => handleDelete(c)}
+                  className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                  aria-label={`Supprimer ${c.name}`}
+                  title="Supprimer ce client"
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             </div>
