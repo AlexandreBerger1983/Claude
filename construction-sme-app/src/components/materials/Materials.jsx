@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Minus, Search, AlertTriangle, Package } from 'lucide-react'
+import { Plus, Minus, Search, AlertTriangle, Package, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency } from '../../utils/formatters'
 import FormModal from '../ui/FormModal'
@@ -19,7 +19,7 @@ const materialFields = [
 ]
 
 export default function Materials() {
-  const { data, add, update } = useData()
+  const { data, add, update, remove } = useData()
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('Tous')
   const [showLowOnly, setShowLowOnly] = useState(false)
@@ -168,7 +168,17 @@ export default function Materials() {
                   <td className="px-4 py-3.5 text-right text-sm text-slate-500">{m.minStock || '—'}</td>
                   <td className="px-4 py-3.5 text-right font-semibold text-slate-700">{formatCurrency(m.stock * m.unitCost)}</td>
                   <td className="px-4 py-3.5">
-                    <button onClick={() => setModal(m)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setModal(m)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>
+                      <button
+                        onClick={() => window.confirm(`Supprimer « ${m.name} » de l'inventaire ?`) && remove('materials', m.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                        aria-label={`Supprimer ${m.name}`}
+                        title="Supprimer cet article"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

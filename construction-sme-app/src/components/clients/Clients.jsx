@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Phone, Mail, Building2, TrendingUp } from 'lucide-react'
+import { Plus, Search, Phone, Mail, Building2, TrendingUp, Clock } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, statusColor } from '../../utils/formatters'
 import FormModal from '../ui/FormModal'
@@ -29,6 +29,23 @@ export default function Clients() {
   const [modal, setModal] = useState(null) // null | 'new' | client à modifier
 
   const clients = data.clients
+
+  // Liaison heures ↔ client : les heures des feuilles de temps saisies sur
+  // les projets de ce client, valorisées au taux horaire de chaque employé.
+  const laborForClient = (client) => {
+    const projectIds = new Set(data.projects.filter(p => p.client === client.name).map(p => p.id))
+    const projectCodes = new Set(data.projects.filter(p => p.client === client.name).map(p => p.code))
+    let hours = 0, cost = 0
+    for (const t of data.timesheets) {
+      if (projectIds.has(t.projectId) || projectCodes.has(t.project)) {
+        const emp = data.employees.find(e => e.id === t.employeeId)
+        hours += t.hours || 0
+        cost += (t.hours || 0) * (emp?.hourlyRate || 0)
+      }
+    }
+    return { hours, cost }
+  }
+
   const filtered = clients.filter(c =>
     (type === 'Tous' || c.type === type) &&
     (statusF === 'Tous' || c.status === statusF) &&
@@ -117,10 +134,21 @@ export default function Clients() {
             )}
 
             <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-emerald-600">
-                <TrendingUp size={13} />
-                <span className="text-xs font-semibold">{formatCurrency(c.ca || 0, true)}</span>
-                <span className="text-xs text-slate-400">CA total</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-emerald-600">
+                  <TrendingUp size={13} />
+                  <span className="text-xs font-semibold">{formatCurrency(c.ca || 0, true)}</span>
+                  <span className="text-xs text-slate-400">CA total</span>
+                </div>
+                {(() => {
+                  const { hours, cost } = laborForClient(c)
+                  return hours > 0 ? (
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <Clock size={12} className="text-slate-400" />
+                      <span className="text-xs">{hours}h travaillées · <span className="font-semibold text-slate-600">{formatCurrency(cost, true)}</span> M.O.</span>
+                    </div>
+                  ) : null
+                })()}
               </div>
               <div className="flex gap-1.5">
                 <button onClick={() => setModal(c)} className="btn-ghost py-1 px-2 text-xs">Modifier</button>

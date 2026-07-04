@@ -1,12 +1,15 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Calendar, Users, ListChecks, BadgeCheck, ChevronLeft, ChevronRight,
-  Plus, Trash2, AlertTriangle, Save, Info,
+  Plus, Trash2, AlertTriangle, Info, Landmark,
 } from 'lucide-react'
-import { useLocalStorage } from '../../hooks/useLocalStorage'
-import { PAYROLL_KEY, defaultPayrollData, ensureYear, ensureEmployeeEntries } from './payrollStore'
-import { computeWeek, computeYear, yearTotals } from './payrollEngine'
-import { formatDate } from '../../utils/formatters'
+import { Link } from 'react-router-dom'
+import { useLocalStorage, readStorage, writeStorage } from '../../hooks/useLocalStorage'
+import { useData } from '../../store/DataContext'
+import { PAYROLL_KEY, PAYROLL_IMPORT_FLAG, migratePayroll, ensureYear } from './payrollStore'
+import { computeYear, yearTotals } from './payrollEngine'
+import { PAYROLL_EMPLOYEES_SEED } from '../../data/payrollCatalog'
+import { formatDate, formatCurrency } from '../../utils/formatters'
 import clsx from 'clsx'
 
 const fmtH = (v) => {
@@ -14,42 +17,41 @@ const fmtH = (v) => {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
 }
 
+// Salaire estimé d'une semaine : heures simples × taux, temps et demi ×1,5,
+// temps double ×2 — le lien direct entre les heures et le taux horaire du
+// module Employés.
+const weekPay = (r, rate) => (r ? ((r.Z || 0) + 1.5 * (r.AA || 0) + 2 * (r.AB || 0)) * (rate || 0) : 0)
+
 const TABS = [
   { id: 'saisie', label: 'Saisie hebdomadaire', icon: Calendar },
   { id: 'resume', label: 'Résumé de la semaine', icon: ListChecks },
   { id: 'fiche', label: 'Fiche annuelle', icon: Users },
-  { id: 'employes', label: 'Employés & banque', icon: Users },
+  { id: 'banque', label: "Banque d'heures", icon: Landmark },
   { id: 'licences', label: 'Licences', icon: BadgeCheck },
 ]
 
 // ─── Onglet : Saisie hebdomadaire ─────────────────────────────────────────────
-function TabSaisie({ data, setData, year, weekIndex, setWeekIndex }) {
-  const yearData = data.years[year]
-  const activeEmployees = data.employees.filter(e => e.active)
+function TabSaisie({ employees, payroll, setPayroll, year, weekIndex, setWeekIndex }) {
+  const yearData = payroll.years[year]
 
   const updateEntry = (empId, field, value) => {
-    setData(d => {
-      const yd = d.years[year]
+    setPayroll(p => {
+      const yd = p.years[year]
       const entries = { ...yd.entries }
       const empEntries = [...(entries[empId] || [])]
       empEntries[weekIndex] = { ...empEntries[weekIndex], [field]: value === '' ? '' : parseFloat(value) || 0 }
       entries[empId] = empEntries
-      return { ...d, years: { ...d.years, [year]: { ...yd, entries } } }
+      return { ...p, years: { ...p.years, [year]: { ...yd, entries } } }
     })
   }
 
-  // Calcule le résultat de la semaine sélectionnée (et le solde de banque
-  // précédent) pour un employé, en rejouant les semaines depuis le début
-  // de l'année — nécessaire car chaque semaine dépend de la précédente.
-  const computeUpTo = (empId) => {
-    const emp = data.employees.find(e => e.id === empId)
-    const empEntries = yearData.entries[empId] || []
+  const computeUpTo = (emp) => {
+    const empEntries = payroll.years[year].entries[emp.id] || []
     const upTo = empEntries.slice(0, weekIndex + 1).map((w, i) => ({ ...w, date: yearData.weekDates[i] }))
-    const results = computeYear(upTo, emp?.opening ?? { L: 0, R: 0, X: 0 })
+    const opening = payroll.config[emp.id]?.opening ?? { L: 0, R: 0, X: 0 }
+    const results = computeYear(upTo, opening)
     return results[results.length - 1]
   }
-
-  const weekLabel = (idx) => `Semaine ${idx + 1} — se terminant le ${formatDate(yearData.weekDates[idx])}`
 
   return (
     <div className="space-y-4">
@@ -68,7 +70,7 @@ function TabSaisie({ data, setData, year, weekIndex, setWeekIndex }) {
           className="input flex-1 font-semibold text-center"
         >
           {yearData.weekDates.map((d, i) => (
-            <option key={d} value={i}>{weekLabel(i)}</option>
+            <option key={d} value={i}>Semaine {i + 1} — se terminant le {formatDate(d)}</option>
           ))}
         </select>
         <button
@@ -82,12 +84,16 @@ function TabSaisie({ data, setData, year, weekIndex, setWeekIndex }) {
 
       <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 flex items-start gap-2">
         <Info size={14} className="flex-shrink-0 mt-0.5" />
-        <p>Entrez les heures <strong>travaillées</strong> par catégorie. Le programme calcule automatiquement le temps supplémentaire (Commercial) et la banque d'heures (catégories Résidentiel), exactement comme dans votre feuille Excel.</p>
+        <p>
+          Entrez les heures <strong>travaillées</strong> par catégorie. Temps supplémentaire, banque d'heures et
+          <strong> salaire estimé</strong> (heures × taux horaire du module Employés, ×1,5 et ×2 pour le temps
+          supplémentaire) se calculent automatiquement.
+        </p>
       </div>
 
       {/* Table de saisie */}
       <div className="card p-0 overflow-x-auto">
-        <table className="w-full text-sm min-w-[820px]">
+        <table className="w-full text-sm min-w-[960px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase sticky left-0 bg-slate-50">Employé</th>
@@ -97,16 +103,21 @@ function TabSaisie({ data, setData, year, weekIndex, setWeekIndex }) {
               <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Non-Réglem.</th>
               <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Hrs à travailler</th>
               <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total payé</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Salaire estimé</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {activeEmployees.map(emp => {
-              const entry = yearData.entries[emp.id]?.[weekIndex] ?? { D: 0, I: 0, O: 0, U: 0, AD: 40 }
-              const result = computeUpTo(emp.id)
+            {employees.map(emp => {
+              const entry = payroll.years[year].entries[emp.id]?.[weekIndex] ?? { D: 0, I: 0, O: 0, U: 0, AD: 40 }
+              const result = computeUpTo(emp)
               const totalPaye = (result?.Z ?? 0) + (result?.AA ?? 0) + (result?.AB ?? 0)
+              const pay = weekPay(result, emp.hourlyRate)
               return (
                 <tr key={emp.id} className="table-row-hover">
-                  <td className="px-4 py-2.5 font-medium text-slate-700 sticky left-0 bg-white whitespace-nowrap">{emp.name}</td>
+                  <td className="px-4 py-2.5 sticky left-0 bg-white whitespace-nowrap">
+                    <p className="font-medium text-slate-700">{emp.name}</p>
+                    <p className="text-[10px] text-slate-400">{formatCurrency(emp.hourlyRate)} /h</p>
+                  </td>
                   {['D', 'I', 'O', 'U'].map(field => (
                     <td key={field} className="px-2 py-2">
                       <input
@@ -128,29 +139,37 @@ function TabSaisie({ data, setData, year, weekIndex, setWeekIndex }) {
                     />
                   </td>
                   <td className="px-4 py-2.5 text-right font-bold text-slate-800">{fmtH(totalPaye)} h</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-emerald-700">
+                    {emp.hourlyRate > 0 ? formatCurrency(pay) : <span className="text-slate-300 font-normal text-xs">taux à définir</span>}
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
       </div>
+
+      <p className="text-xs text-slate-400">
+        Le taux horaire de chaque employé se modifie dans le module <Link to="/employes" className="text-brand-500 underline">Employés</Link>.
+      </p>
     </div>
   )
 }
 
-// ─── Onglet : Résumé de la semaine (reproduit "Heures payables par semaine") ──
-function TabResume({ data, year, weekIndex }) {
-  const yearData = data.years[year]
-  const activeEmployees = data.employees.filter(e => e.active)
+// ─── Onglet : Résumé de la semaine ────────────────────────────────────────────
+function TabResume({ employees, payroll, year, weekIndex }) {
+  const yearData = payroll.years[year]
 
-  const rows = activeEmployees.map(emp => {
+  const rows = employees.map(emp => {
     const empEntries = yearData.entries[emp.id] || []
     const upTo = empEntries.slice(0, weekIndex + 1).map((w, i) => ({ ...w, date: yearData.weekDates[i] }))
-    const results = computeYear(upTo, emp.opening ?? { L: 0, R: 0, X: 0 })
+    const opening = payroll.config[emp.id]?.opening ?? { L: 0, R: 0, X: 0 }
+    const results = computeYear(upTo, opening)
     const r = results[results.length - 1]
     const total = (r?.E ?? 0) + (r?.F ?? 0) + (r?.G ?? 0) + (r?.M ?? 0) + (r?.S ?? 0) + (r?.Y ?? 0)
     return {
       name: emp.name,
+      rate: emp.hourlyRate,
       commSimple: r?.E ?? 0,
       commDemi: r?.F ?? 0,
       commDouble: r?.G ?? 0,
@@ -158,6 +177,7 @@ function TabResume({ data, year, weekIndex }) {
       leger: r?.S ?? 0,
       nonReglem: r?.Y ?? 0,
       total,
+      pay: weekPay(r, emp.hourlyRate),
     }
   })
 
@@ -169,33 +189,44 @@ function TabResume({ data, year, weekIndex }) {
     leger: acc.leger + r.leger,
     nonReglem: acc.nonReglem + r.nonReglem,
     total: acc.total + r.total,
-  }), { commSimple: 0, commDemi: 0, commDouble: 0, lourd: 0, leger: 0, nonReglem: 0, total: 0 })
+    pay: acc.pay + r.pay,
+  }), { commSimple: 0, commDemi: 0, commDouble: 0, lourd: 0, leger: 0, nonReglem: 0, total: 0, pay: 0 })
 
   return (
     <div className="space-y-4">
-      <div className="card">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Semaine finissant le</p>
-        <p className="text-lg font-bold text-slate-800">{formatDate(yearData.weekDates[weekIndex])}</p>
+      <div className="card flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Semaine finissant le</p>
+          <p className="text-lg font-bold text-slate-800">{formatDate(yearData.weekDates[weekIndex])}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Masse salariale de la semaine</p>
+          <p className="text-lg font-bold text-emerald-700">{formatCurrency(grand.pay)}</p>
+        </div>
       </div>
 
       <div className="card p-0 overflow-x-auto">
-        <table className="w-full text-sm min-w-[760px]">
+        <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Employé</th>
               <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Comm. simple</th>
               <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Comm. demi</th>
               <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Comm. double</th>
-              <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Résid. Lourd Règlem</th>
-              <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Résid. Léger Règlem</th>
+              <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Résid. Lourd</th>
+              <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Résid. Léger</th>
               <th className="text-right px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Non-Règlem</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total hrs</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Salaire</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(r => (
               <tr key={r.name} className="table-row-hover">
-                <td className="px-4 py-2.5 font-medium text-slate-700 whitespace-nowrap">{r.name}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">
+                  <p className="font-medium text-slate-700">{r.name}</p>
+                  <p className="text-[10px] text-slate-400">{formatCurrency(r.rate)} /h</p>
+                </td>
                 <td className="px-3 py-2.5 text-right">{fmtH(r.commSimple)}</td>
                 <td className="px-3 py-2.5 text-right">{fmtH(r.commDemi)}</td>
                 <td className="px-3 py-2.5 text-right">{fmtH(r.commDouble)}</td>
@@ -203,6 +234,7 @@ function TabResume({ data, year, weekIndex }) {
                 <td className="px-3 py-2.5 text-right">{fmtH(r.leger)}</td>
                 <td className="px-3 py-2.5 text-right">{fmtH(r.nonReglem)}</td>
                 <td className="px-4 py-2.5 text-right font-bold text-slate-800">{fmtH(r.total)}</td>
+                <td className="px-4 py-2.5 text-right font-bold text-emerald-700">{r.rate > 0 ? formatCurrency(r.pay) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -216,6 +248,7 @@ function TabResume({ data, year, weekIndex }) {
               <td className="px-3 py-3 text-right">{fmtH(grand.leger)}</td>
               <td className="px-3 py-3 text-right">{fmtH(grand.nonReglem)}</td>
               <td className="px-4 py-3 text-right text-brand-600">{fmtH(grand.total)}</td>
+              <td className="px-4 py-3 text-right text-emerald-700">{formatCurrency(grand.pay)}</td>
             </tr>
           </tfoot>
         </table>
@@ -224,34 +257,36 @@ function TabResume({ data, year, weekIndex }) {
   )
 }
 
-// ─── Onglet : Fiche annuelle par employé ──────────────────────────────────────
-function TabFiche({ data, year }) {
-  const [empId, setEmpId] = useState(data.employees.find(e => e.active)?.id)
-  const yearData = data.years[year]
-  const emp = data.employees.find(e => e.id === empId)
+// ─── Onglet : Fiche annuelle ──────────────────────────────────────────────────
+function TabFiche({ employees, payroll, year }) {
+  const [empId, setEmpId] = useState(employees[0]?.id)
+  const yearData = payroll.years[year]
+  const emp = employees.find(e => e.id === empId) ?? employees[0]
 
   const weekly = useMemo(() => {
     if (!emp) return []
     const empEntries = yearData.entries[emp.id] || []
     const inputs = empEntries.map((w, i) => ({ ...w, date: yearData.weekDates[i] }))
-    return computeYear(inputs, emp.opening ?? { L: 0, R: 0, X: 0 })
-  }, [emp, yearData])
+    const opening = payroll.config[emp.id]?.opening ?? { L: 0, R: 0, X: 0 }
+    return computeYear(inputs, opening)
+  }, [emp, yearData, payroll.config])
 
   const totals = useMemo(() => yearTotals(weekly), [weekly])
+  const annualPay = weekly.reduce((s, w) => s + weekPay(w, emp?.hourlyRate), 0)
 
-  if (!emp) return <p className="text-slate-400 text-sm">Aucun employé actif. Ajoutez-en un dans l'onglet « Employés & banque ».</p>
+  if (!emp) return <p className="text-slate-400 text-sm">Aucun employé actif. Ajoutez-en un dans le module Employés.</p>
 
   return (
     <div className="space-y-4">
       <div className="card flex items-center gap-3">
         <label className="label mb-0 flex-shrink-0">Employé</label>
-        <select value={empId} onChange={e => setEmpId(Number(e.target.value))} className="input flex-1">
-          {data.employees.filter(e => e.active).map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        <select value={emp.id} onChange={e => setEmpId(Number(e.target.value))} className="input flex-1">
+          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
       </div>
 
       {/* Totaux annuels */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="card text-center py-3">
           <p className="text-xs text-slate-400 uppercase">Heures travaillées</p>
           <p className="text-xl font-bold text-slate-800">{fmtH(totals.heuresTravaillees)}</p>
@@ -265,16 +300,21 @@ function TabFiche({ data, year }) {
           <p className="text-xl font-bold text-red-600">{fmtH(totals.AB)}</p>
         </div>
         <div className="card text-center py-3">
-          <p className="text-xs text-slate-400 uppercase">Solde banque (L / R / X)</p>
+          <p className="text-xs text-slate-400 uppercase">Banque (L / R / X)</p>
           <p className="text-sm font-bold text-slate-800">
             {fmtH(weekly[weekly.length - 1]?.L)} / {fmtH(weekly[weekly.length - 1]?.R)} / {fmtH(weekly[weekly.length - 1]?.X)}
           </p>
+        </div>
+        <div className="card text-center py-3">
+          <p className="text-xs text-slate-400 uppercase">Salaire annuel estimé</p>
+          <p className="text-xl font-bold text-emerald-700">{emp.hourlyRate > 0 ? formatCurrency(annualPay, true) : '—'}</p>
+          <p className="text-[10px] text-slate-400">{formatCurrency(emp.hourlyRate)} /h</p>
         </div>
       </div>
 
       {/* Table annuelle complète */}
       <div className="card p-0 overflow-auto max-h-[600px]">
-        <table className="w-full text-xs min-w-[1100px]">
+        <table className="w-full text-xs min-w-[1150px]">
           <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
             <tr>
               <th rowSpan={2} className="text-left px-3 py-2 font-semibold text-slate-500 uppercase align-bottom sticky left-0 bg-slate-50">Semaine</th>
@@ -283,6 +323,7 @@ function TabFiche({ data, year }) {
               <th colSpan={5} className="text-center px-2 py-1.5 font-semibold text-slate-500 uppercase border-l border-slate-200">Résid. Léger Règlem.</th>
               <th colSpan={5} className="text-center px-2 py-1.5 font-semibold text-slate-500 uppercase border-l border-slate-200">Résid. Non-Règlem.</th>
               <th colSpan={3} className="text-center px-2 py-1.5 font-semibold text-slate-500 uppercase border-l border-slate-200">Total payé</th>
+              <th rowSpan={2} className="text-right px-3 py-2 font-semibold text-slate-500 uppercase align-bottom border-l border-slate-200">Salaire</th>
             </tr>
             <tr>
               <th className="px-2 py-1 border-l border-slate-200">Trav.</th>
@@ -335,64 +376,45 @@ function TabFiche({ data, year }) {
                 <td className="px-2 py-1.5 text-center border-l border-slate-100 font-semibold">{fmtH(w.Z)}</td>
                 <td className="px-2 py-1.5 text-center">{fmtH(w.AA)}</td>
                 <td className="px-2 py-1.5 text-center">{fmtH(w.AB)}</td>
+                <td className="px-3 py-1.5 text-right border-l border-slate-100 font-semibold text-emerald-700">
+                  {emp.hourlyRate > 0 && weekPay(w, emp.hourlyRate) > 0 ? formatCurrency(weekPay(w, emp.hourlyRate)) : ''}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <p className="text-xs text-slate-400">
-        Banque+ = heures mises en banque cette semaine · Banque− = heures retirées de la banque · Solde = cumulatif reporté chaque semaine.
+        Banque+ = heures mises en banque · Banque− = heures retirées · Solde = cumulatif. Salaire = (hrs simples + 1,5 × hrs demi + 2 × hrs doubles) × taux horaire.
       </p>
     </div>
   )
 }
 
-// ─── Onglet : Employés & banque d'ouverture ───────────────────────────────────
-function TabEmployes({ data, setData }) {
-  const [newName, setNewName] = useState('')
-
-  const addEmployee = () => {
-    if (!newName.trim()) return
-    setData(d => ({
-      ...d,
-      employees: [...d.employees, { id: Date.now(), name: newName.trim(), active: true, opening: { L: 0, R: 0, X: 0 } }],
+// ─── Onglet : Banque d'heures (solde reporté) ─────────────────────────────────
+function TabBanque({ employees, payroll, setPayroll }) {
+  const updateOpening = (empId, key, value) =>
+    setPayroll(p => ({
+      ...p,
+      config: {
+        ...p.config,
+        [empId]: {
+          ...(p.config[empId] ?? {}),
+          opening: { L: 0, R: 0, X: 0, ...(p.config[empId]?.opening ?? {}), [key]: parseFloat(value) || 0 },
+        },
+      },
     }))
-    setNewName('')
-  }
-
-  const updateEmployee = (id, field, value) =>
-    setData(d => ({ ...d, employees: d.employees.map(e => e.id === id ? { ...e, [field]: value } : e) }))
-
-  const updateOpening = (id, key, value) =>
-    setData(d => ({
-      ...d,
-      employees: d.employees.map(e => e.id === id ? { ...e, opening: { ...e.opening, [key]: parseFloat(value) || 0 } } : e),
-    }))
-
-  const removeEmployee = (id) => {
-    if (!window.confirm('Retirer cet employé ? Ses données historiques resteront enregistrées mais il ne sera plus proposé pour la saisie.')) return
-    setData(d => ({ ...d, employees: d.employees.map(e => e.id === id ? { ...e, active: false } : e) }))
-  }
 
   return (
     <div className="space-y-4">
-      <div className="card">
-        <h3 className="font-semibold text-slate-700 text-sm mb-3">Ajouter un employé</h3>
-        <div className="flex gap-2">
-          <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && addEmployee()}
-            placeholder="Nom complet de l'employé"
-            className="input flex-1"
-          />
-          <button onClick={addEmployee} className="btn-primary flex-shrink-0"><Plus size={16} /> Ajouter</button>
-        </div>
-      </div>
-
       <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 flex items-start gap-2">
         <Info size={14} className="flex-shrink-0 mt-0.5" />
-        <p>Le <strong>solde reporté</strong> correspond aux heures déjà en banque avant le début de l'année dans l'application (colonne « Reportées de l'année précédente » dans votre ancien fichier Excel). Entrez ces valeurs une seule fois pour chaque employé actif.</p>
+        <p>
+          Le <strong>solde reporté</strong> correspond aux heures déjà en banque avant la première année saisie ici
+          (colonne « Reportées de l'année précédente » de votre ancien fichier Excel). La liste des employés — noms,
+          taux horaires, embauches et départs — se gère dans le module{' '}
+          <Link to="/employes" className="underline font-semibold">Employés</Link>.
+        </p>
       </div>
 
       <div className="card p-0 overflow-x-auto">
@@ -400,45 +422,33 @@ function TabEmployes({ data, setData }) {
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Employé</th>
-              <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Actif</th>
+              <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Taux horaire</th>
               <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Banque Lourd (h)</th>
               <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Banque Léger (h)</th>
               <th className="text-center px-3 py-3 text-xs font-semibold text-slate-500 uppercase">Banque Non-Règlem (h)</th>
-              <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {data.employees.map(emp => (
-              <tr key={emp.id} className={clsx('table-row-hover', !emp.active && 'opacity-40')}>
-                <td className="px-4 py-2.5">
-                  <input
-                    value={emp.name}
-                    onChange={e => updateEmployee(emp.id, 'name', e.target.value)}
-                    className="font-medium text-slate-700 bg-transparent border-0 outline-none w-full hover:bg-slate-100 focus:bg-slate-100 rounded px-1 py-0.5 -ml-1"
-                  />
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  <input type="checkbox" checked={emp.active} onChange={e => updateEmployee(emp.id, 'active', e.target.checked)} className="w-4 h-4 accent-brand-500" />
-                </td>
-                {['L', 'R', 'X'].map(k => (
-                  <td key={k} className="px-3 py-2.5">
-                    <input
-                      type="number" step="0.5"
-                      value={emp.opening?.[k] ?? 0}
-                      onChange={e => updateOpening(emp.id, k, e.target.value)}
-                      className="input py-1 text-center text-sm w-24 mx-auto"
-                    />
-                  </td>
-                ))}
-                <td className="px-4 py-2.5 text-right">
-                  {emp.active && (
-                    <button onClick={() => removeEmployee(emp.id)} className="text-slate-300 hover:text-red-400 transition-colors">
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {employees.map(emp => {
+              const opening = payroll.config[emp.id]?.opening ?? { L: 0, R: 0, X: 0 }
+              return (
+                <tr key={emp.id} className="table-row-hover">
+                  <td className="px-4 py-2.5 font-medium text-slate-700">{emp.name}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-600">{formatCurrency(emp.hourlyRate)} /h</td>
+                  {['L', 'R', 'X'].map(k => (
+                    <td key={k} className="px-3 py-2.5">
+                      <input
+                        type="number" step="0.5"
+                        value={opening[k] ?? 0}
+                        onChange={e => updateOpening(emp.id, k, e.target.value)}
+                        onFocus={e => e.target.select()}
+                        className="input py-1 text-center text-sm w-24 mx-auto"
+                      />
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -446,25 +456,26 @@ function TabEmployes({ data, setData }) {
   )
 }
 
-// ─── Onglet : Licences / certificats de compétence ────────────────────────────
-function TabLicences({ data, setData }) {
+// ─── Onglet : Licences ────────────────────────────────────────────────────────
+function TabLicences({ payroll, setPayroll }) {
   const today = new Date()
 
   const daysLeft = (dateStr) => {
+    if (!dateStr) return 0
     const d = new Date(dateStr + 'T00:00:00')
     return Math.round((d - today) / (1000 * 60 * 60 * 24))
   }
 
   const update = (id, field, value) =>
-    setData(d => ({ ...d, licenses: d.licenses.map(l => l.id === id ? { ...l, [field]: value } : l) }))
+    setPayroll(p => ({ ...p, licenses: p.licenses.map(l => l.id === id ? { ...l, [field]: value } : l) }))
 
   const addLicense = () =>
-    setData(d => ({ ...d, licenses: [...d.licenses, { id: Date.now(), name: '', licenseType: 'Certificat de compétence (CCQ)', renewalDate: '' }] }))
+    setPayroll(p => ({ ...p, licenses: [...p.licenses, { id: Date.now(), name: '', licenseType: 'Certificat de compétence (CCQ)', renewalDate: '' }] }))
 
   const removeLicense = (id) =>
-    setData(d => ({ ...d, licenses: d.licenses.filter(l => l.id !== id) }))
+    setPayroll(p => ({ ...p, licenses: p.licenses.filter(l => l.id !== id) }))
 
-  const sorted = [...data.licenses].sort((a, b) => daysLeft(a.renewalDate) - daysLeft(b.renewalDate))
+  const sorted = [...payroll.licenses].sort((a, b) => daysLeft(a.renewalDate) - daysLeft(b.renewalDate))
   const expiredCount = sorted.filter(l => daysLeft(l.renewalDate) < 0).length
   const soonCount = sorted.filter(l => { const d = daysLeft(l.renewalDate); return d >= 0 && d <= 90 }).length
 
@@ -534,23 +545,52 @@ function TabLicences({ data, setData }) {
 
 // ─── Composant principal ───────────────────────────────────────────────────────
 export default function Payroll() {
-  const [rawData, setRawData] = useLocalStorage(PAYROLL_KEY, null)
+  const { data, bulkAdd } = useData()
+  const [raw, setRaw] = useLocalStorage(PAYROLL_KEY, null)
   const [tab, setTab] = useState('saisie')
   const [year, setYear] = useState(new Date().getFullYear())
   const [weekIndex, setWeekIndex] = useState(0)
+  const didImport = useRef(false)
 
-  const data = useMemo(() => {
-    let d = rawData ?? defaultPayrollData()
-    d = ensureYear(d, year)
-    d = ensureEmployeeEntries(d, year)
-    return d
-  }, [rawData, year])
+  // Import unique : les employés du classeur Excel fourni deviennent des
+  // employés du module Employés (source unique pour toute l'application).
+  useEffect(() => {
+    if (didImport.current || readStorage(PAYROLL_IMPORT_FLAG, false)) return
+    didImport.current = true
+    const missing = PAYROLL_EMPLOYEES_SEED.filter(se =>
+      !data.employees.some(e => e.name.trim().toLowerCase() === se.name.trim().toLowerCase())
+    )
+    if (missing.length > 0) {
+      bulkAdd('employees', missing.map(m => ({
+        name: m.name,
+        role: 'Employé de chantier',
+        email: '', phone: '',
+        hourlyRate: 0,
+        status: 'Actif',
+        startDate: '',
+        hrsThisWeek: 0, hrsThisMonth: 0,
+        certifications: [],
+        avatar: m.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
+      })))
+    }
+    writeStorage(PAYROLL_IMPORT_FLAG, true)
+  }, [data.employees, bulkAdd])
 
-  const setData = (updater) => {
-    setRawData(prev => {
-      let base = prev ?? defaultPayrollData()
-      base = ensureYear(base, year)
-      base = ensureEmployeeEntries(base, year)
+  const employees = useMemo(
+    () => data.employees.filter(e => e.status === 'Actif'),
+    [data.employees]
+  )
+
+  const payroll = useMemo(() => {
+    let p = migratePayroll(raw, data.employees)
+    p = ensureYear(p, year, employees)
+    return p
+  }, [raw, data.employees, employees, year])
+
+  const setPayroll = (updater) => {
+    setRaw(prev => {
+      let base = migratePayroll(prev, data.employees)
+      base = ensureYear(base, year, employees)
       return typeof updater === 'function' ? updater(base) : updater
     })
   }
@@ -560,7 +600,9 @@ export default function Payroll() {
       <div className="page-header">
         <div>
           <h2 className="section-title">Paie & Heures (CCQ)</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Suivi des heures travaillées, payées et en banque — Commercial et Résidentiel</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {employees.length} employés actifs (module Employés) · heures travaillées, payées et en banque
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-slate-500 font-medium">Année</label>
@@ -588,11 +630,11 @@ export default function Payroll() {
         ))}
       </div>
 
-      {tab === 'saisie' && <TabSaisie data={data} setData={setData} year={year} weekIndex={weekIndex} setWeekIndex={setWeekIndex} />}
-      {tab === 'resume' && <TabResume data={data} year={year} weekIndex={weekIndex} />}
-      {tab === 'fiche' && <TabFiche data={data} year={year} />}
-      {tab === 'employes' && <TabEmployes data={data} setData={setData} />}
-      {tab === 'licences' && <TabLicences data={data} setData={setData} />}
+      {tab === 'saisie' && <TabSaisie employees={employees} payroll={payroll} setPayroll={setPayroll} year={year} weekIndex={weekIndex} setWeekIndex={setWeekIndex} />}
+      {tab === 'resume' && <TabResume employees={employees} payroll={payroll} year={year} weekIndex={weekIndex} />}
+      {tab === 'fiche' && <TabFiche employees={employees} payroll={payroll} year={year} />}
+      {tab === 'banque' && <TabBanque employees={employees} payroll={payroll} setPayroll={setPayroll} />}
+      {tab === 'licences' && <TabLicences payroll={payroll} setPayroll={setPayroll} />}
     </div>
   )
 }

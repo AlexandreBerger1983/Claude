@@ -40,11 +40,12 @@ console.log('OK: onglet résumé hebdomadaire (reproduit la feuille Excel)')
 
 await page.click('text=Fiche annuelle')
 await page.waitForSelector('text=Heures travaillées', { timeout: 5000 })
-console.log('OK: onglet fiche annuelle par employé (52 semaines)')
+await page.waitForSelector('text=Salaire annuel estimé', { timeout: 5000 })
+console.log('OK: onglet fiche annuelle par employé (52 semaines + salaire estimé)')
 
-await page.click('text=Employés & banque')
-await page.waitForSelector('text=Ajouter un employé', { timeout: 5000 })
-console.log('OK: onglet gestion employés & banque d\'ouverture')
+await page.click('text=Banque d\'heures')
+await page.waitForSelector('text=Banque Lourd (h)', { timeout: 5000 })
+console.log('OK: onglet banque d\'heures (roster lié au module Employés)')
 
 await page.click('text=Licences')
 await page.waitForSelector('text=Licences expirées', { timeout: 5000 })

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, CheckCircle, Clock, Search, Download } from 'lucide-react'
+import { Plus, CheckCircle, Clock, Search, Download, Trash2 } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatDate, formatCurrency } from '../../utils/formatters'
 import { downloadCsv } from '../../utils/csv'
@@ -7,7 +7,7 @@ import FormModal from '../ui/FormModal'
 import clsx from 'clsx'
 
 export default function Timesheets() {
-  const { data, add, update } = useData()
+  const { data, add, update, remove } = useData()
   const [search, setSearch] = useState('')
   const [empFilter, setEmpFilter] = useState('Tous')
   const [approvedFilter, setApprovedFilter] = useState('Tous')
@@ -183,9 +183,19 @@ export default function Timesheets() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
-                    {!t.approved && (
-                      <button onClick={() => approve(t)} className="btn-ghost text-xs text-emerald-600 py-1 px-2">Approuver</button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {!t.approved && (
+                        <button onClick={() => approve(t)} className="btn-ghost text-xs text-emerald-600 py-1 px-2">Approuver</button>
+                      )}
+                      <button
+                        onClick={() => window.confirm(`Supprimer cette entrée de ${t.hours}h (${t.employee}, ${t.date}) ?`) && remove('timesheets', t.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-400 transition-colors"
+                        aria-label="Supprimer cette entrée"
+                        title="Supprimer cette entrée"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

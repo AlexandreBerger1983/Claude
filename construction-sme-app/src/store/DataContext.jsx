@@ -51,11 +51,23 @@ export function DataProvider({ children }) {
     } catch { /* stockage plein — on continue sans persistance */ }
   }, [data])
 
+  // compteur pour garantir des identifiants uniques même lors d'ajouts
+  // multiples dans la même milliseconde
+  const nextId = (() => {
+    let seq = 0
+    return () => Date.now() * 100 + (seq++ % 100)
+  })()
+
   const add = (collection, item) => {
-    const id = Date.now()
-    const record = { id, ...item }
+    const record = { id: nextId(), ...item }
     setData(d => ({ ...d, [collection]: [...d[collection], record] }))
     return record
+  }
+
+  const bulkAdd = (collection, items) => {
+    const records = items.map(it => ({ id: nextId(), ...it }))
+    setData(d => ({ ...d, [collection]: [...d[collection], ...records] }))
+    return records
   }
 
   const update = (collection, id, patch) =>
@@ -70,7 +82,7 @@ export function DataProvider({ children }) {
   const resetToSeed = () => setData(seed())
 
   return (
-    <DataContext.Provider value={{ data, add, update, remove, resetToSeed }}>
+    <DataContext.Provider value={{ data, add, bulkAdd, update, remove, resetToSeed }}>
       {children}
     </DataContext.Provider>
   )
