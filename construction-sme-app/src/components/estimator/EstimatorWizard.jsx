@@ -366,16 +366,17 @@ function StepWorks({ draft, update }) {
 
   const removeItem = (id) => update('items', items.filter(it => it.id !== id))
 
-  // Ligne personnalisée : quantité et prix entrés à la main, aucun lien
-  // avec les dimensions de la pièce
+  // Ligne personnalisée : quantité manuelle OU calculée depuis une base de
+  // mesure de la pièce (linéaire, murs, plancher, plafond)
   const addCustomLine = (values) => {
+    const { qty, unit: newUnit } = applyBasis(values, activeRoomId)
     update('items', [...items, {
       id: Date.now() + Math.random(),
       catalogId: null,
       description: values.description,
       roomId: activeRoomId,
-      unit: values.unit || 'unité',
-      qty: String(values.qty || 1),
+      unit: newUnit,
+      qty,
       unitMat: String(values.unitMat || 0),
       unitLabor: String(values.unitLabor || 0),
     }])
@@ -395,13 +396,35 @@ function StepWorks({ draft, update }) {
     }])
   }
 
-  // Modification complète d'un item (description, qté, unité, prix)
+  // Bases de mesure disponibles : la quantité est recalculée depuis les
+  // dimensions de la pièce selon la base choisie (linéaire, murs, plancher…)
+  const MEASURE_BASIS = {
+    'Mesure linéaire (périmètre de la pièce)': { key: 'perimeter', unit: 'm lin.' },
+    'Surface des murs (m²)': { key: 'wallArea', unit: 'm²' },
+    'Surface du plancher (m²)': { key: 'floorArea', unit: 'm²' },
+    'Surface du plafond (m²)': { key: 'ceilArea', unit: 'm²' },
+  }
+  const basisOptions = ['Quantité manuelle (je la tape moi-même)', ...Object.keys(MEASURE_BASIS)]
+
+  // Applique la base de mesure choisie : recalcule la quantité depuis les
+  // dimensions de la pièce de l'item, sinon garde la quantité saisie
+  const applyBasis = (values, roomId) => {
+    const basis = MEASURE_BASIS[values.basis]
+    if (!basis) return { qty: String(values.qty || 1), unit: values.unit || 'unité' }
+    const room = rooms.find(r => r.id === roomId)
+    if (!room) return { qty: String(values.qty || 1), unit: basis.unit }
+    const calc = computeRoom(room, unit)
+    return { qty: String(+(calc[basis.key] || 0).toFixed(1)), unit: basis.unit }
+  }
+
+  // Modification complète d'un item (description, qté, unité, prix, mesure)
   const saveEdit = (values) => {
+    const { qty, unit: newUnit } = applyBasis(values, editItem.roomId)
     update('items', items.map(it => it.id === editItem.id ? {
       ...it,
       description: values.description,
-      unit: values.unit || it.unit,
-      qty: String(values.qty),
+      unit: MEASURE_BASIS[values.basis] ? newUnit : (values.unit || it.unit),
+      qty,
       unitMat: String(values.unitMat),
       unitLabor: String(values.unitLabor),
     } : it))
@@ -409,8 +432,9 @@ function StepWorks({ draft, update }) {
 
   const editFields = [
     { name: 'description', label: 'Description', required: true, colSpan: 2 },
-    { name: 'qty', label: 'Quantité', type: 'number', step: '0.1', required: true },
-    { name: 'unit', label: 'Unité', placeholder: 'ex: m², unité, hre, forfait' },
+    { name: 'basis', label: 'Base de mesure', type: 'select', options: basisOptions, colSpan: 2, default: 'Quantité manuelle (je la tape moi-même)' },
+    { name: 'qty', label: 'Quantité (si manuelle)', type: 'number', step: '0.1', required: true },
+    { name: 'unit', label: 'Unité (si manuelle)', placeholder: 'ex: m², unité, hre, forfait' },
     { name: 'unitMat', label: 'Prix matériaux ($ / unité)', type: 'number', step: '0.01' },
     { name: 'unitLabor', label: "Prix main-d'œuvre ($ / unité)", type: 'number', step: '0.01' },
   ]
@@ -629,8 +653,9 @@ function StepWorks({ draft, update }) {
           title={`Ligne personnalisée — ${activeRoom?.name ?? ''}`}
           fields={[
             { name: 'description', label: 'Description du travail ou matériau', required: true, colSpan: 2, placeholder: 'ex: Location nacelle 26 pi — 3 jours' },
-            { name: 'qty', label: 'Quantité', type: 'number', step: '0.1', default: 1, required: true },
-            { name: 'unit', label: 'Unité', placeholder: 'ex: unité, hre, jour, forfait', default: 'unité' },
+            { name: 'basis', label: 'Base de mesure', type: 'select', options: basisOptions, colSpan: 2, default: 'Quantité manuelle (je la tape moi-même)' },
+            { name: 'qty', label: 'Quantité (si manuelle)', type: 'number', step: '0.1', default: 1, required: true },
+            { name: 'unit', label: 'Unité (si manuelle)', placeholder: 'ex: unité, hre, jour, forfait', default: 'unité' },
             { name: 'unitMat', label: 'Prix matériaux ($ / unité)', type: 'number', step: '0.01', default: 0 },
             { name: 'unitLabor', label: "Prix main-d'œuvre ($ / unité)", type: 'number', step: '0.01', default: 0 },
           ]}

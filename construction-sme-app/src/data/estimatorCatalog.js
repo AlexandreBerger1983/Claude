@@ -48,6 +48,11 @@ export const CATALOG = [
     unit: 'm²', autoQty: 'ceilArea', unitMat: 8, unitLabor: 12, wasteFactor: 1.05,
     note: 'Grille T pour tuiles acoustiques ou support gypse',
   },
+  {
+    id: 'ossature-fond-clouage', category: 'Ossature & Structure', label: 'Fond de clouage (blocage bois entre montants)',
+    unit: 'm lin.', autoQty: 'perimeter', unitMat: 6, unitLabor: 12, wasteFactor: 1.05,
+    note: 'Support pour armoires, mains courantes, vanités, accessoires muraux — mesure linéaire',
+  },
 
   // ─── Isolation ──────────────────────────────────────────────────────────────
   {
