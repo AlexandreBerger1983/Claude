@@ -16,6 +16,8 @@ import {
   lineTotal, computeTotals, nextQuoteNumber, fromMeters,
 } from './estimatorUtils'
 import Stepper from './Stepper'
+import RoomQuestionnaire from './RoomQuestionnaire'
+import { questionnaireForRoom } from '../../data/roomQuestionnaires'
 import clsx from 'clsx'
 
 const STEPS = [
@@ -328,6 +330,7 @@ function StepWorks({ draft, update }) {
   const [editItem, setEditItem] = useState(null)      // item en cours de modification
   const [showCustom, setShowCustom] = useState(false) // formulaire ligne personnalisée
   const [showInventory, setShowInventory] = useState(false)
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false)
   const [invSearch, setInvSearch] = useState('')
 
   useEffect(() => {
@@ -415,6 +418,26 @@ function StepWorks({ draft, update }) {
     if (!room) return { qty: String(values.qty || 1), unit: basis.unit }
     const calc = computeRoom(room, unit)
     return { qty: String(+(calc[basis.key] || 0).toFixed(1)), unit: basis.unit }
+  }
+
+  // Lignes générées par le questionnaire détaillé (formulaire Oui/Non par
+  // pièce, comme les soumissions papier) — ajoutées au devis de la pièce
+  const addFromQuestionnaire = (lines, notes) => {
+    const stamp = Date.now()
+    update('items', [...items, ...lines.map((l, i) => ({
+      id: stamp + i + Math.random(),
+      catalogId: null,
+      description: l.description,
+      roomId: activeRoomId,
+      unit: l.unit,
+      qty: String(+(l.qty).toFixed(1)),
+      unitMat: String(+(l.unitMat || 0).toFixed(2)),
+      unitLabor: String(+(l.unitLabor || 0).toFixed(2)),
+    }))])
+    if (notes.length > 0) {
+      const noteText = notes.map(n => `${activeRoom?.name ?? ''} — ${n}`).join('. ')
+      update('notes', draft.notes ? `${draft.notes}\n${noteText}` : noteText)
+    }
   }
 
   // Modification complète d'un item (description, qté, unité, prix, mesure)
@@ -544,6 +567,14 @@ function StepWorks({ draft, update }) {
         </div>
       )}
 
+      {/* Questionnaire détaillé (formulaire Oui/Non comme sur papier) */}
+      <button
+        onClick={() => setShowQuestionnaire(true)}
+        className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-bold shadow-sm transition-colors"
+      >
+        📋 Questionnaire détaillé — {questionnaireForRoom(activeRoom).title}
+      </button>
+
       {/* Ajouts manuels : sans passer par la superficie de la pièce */}
       <div className="grid grid-cols-2 gap-3">
         <button
@@ -629,6 +660,16 @@ function StepWorks({ draft, update }) {
           )
         })}
       </div>
+
+      {/* Questionnaire détaillé par pièce */}
+      {showQuestionnaire && activeRoom && (
+        <RoomQuestionnaire
+          room={activeRoom}
+          questionnaire={questionnaireForRoom(activeRoom)}
+          onSubmit={addFromQuestionnaire}
+          onClose={() => setShowQuestionnaire(false)}
+        />
+      )}
 
       {/* Modale : modifier un item */}
       {editItem && (
