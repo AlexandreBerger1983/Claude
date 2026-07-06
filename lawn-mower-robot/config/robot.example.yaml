@@ -90,12 +90,23 @@ sensors:
 
   emergency_button: 4    # GPIO bouton d'arrêt d'urgence
 
-# --- Caméra ---
+# --- Caméra (montée sur la tête pan/tilt, suit les mouvements de tête) ---
 camera:
   enabled: true
-  resolution: [640, 480]
+
+  # Source : "wyze_rtsp" (caméra Wyze), "picamera" (caméra officielle Pi), "sim"
+  source: "wyze_rtsp"
+
+  # --- Caméra Wyze Cam v3 / Pan v3 ---
+  # Deux façons d'obtenir une URL RTSP (voir docs/camera_wyze.md) :
+  #  1. Firmware RTSP officiel Wyze  → rtsp://user:pass@IP_CAM/live
+  #  2. docker-wyze-bridge sur le Pi → rtsp://IP_DU_PI:8554/nom-camera
+  rtsp_url: "rtsp://user:password@192.168.1.50/live"
+  reconnect_delay: 3.0   # secondes avant reconnexion si le flux tombe
+
+  resolution: [640, 480] # utilisé seulement pour source "picamera"
   framerate: 15
-  stream_quality: 75   # qualité JPEG 0-100
+  stream_quality: 75     # qualité JPEG 0-100 (réduire si latence)
 
 # --- GPS RTK (u-blox ZED-F9P) ---
 gps:

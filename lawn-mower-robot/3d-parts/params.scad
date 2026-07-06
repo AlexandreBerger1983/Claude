@@ -43,6 +43,14 @@ idler_D     = 54;    // diamètre roue folle mm
 idler_W     = 38;    // largeur roue folle mm
 idler_bore  = 8.2;   // alésage roulement mm (608 = 8mm)
 
+// --- Support caméra sur la tête (Wyze Cam) ---
+// MESURER votre caméra et ajuster ! Valeurs par défaut ~ Wyze Cam v3.
+cam_W       = 51;    // largeur caméra mm
+cam_H       = 51;    // hauteur caméra mm
+cam_D       = 46;    // profondeur caméra mm
+cam_wall    = 3;     // épaisseur du berceau mm
+servo_horn_D = 22;   // diamètre du palonnier servo (tilt) mm
+
 // --- Impression ---
 nozzle      = 0.4;   // diamètre buse mm
 layer       = 0.2;   // hauteur de couche mm

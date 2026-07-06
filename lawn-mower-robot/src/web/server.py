@@ -2,12 +2,13 @@
 import threading
 import time
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, Response
 from flask_socketio import SocketIO, emit
 
 from src.control import Robot, MowingController
 from src.control.mowing_gps import GPSMowingController
 from src.hardware.gps_rtk import GPSRTKModule
+from src.hardware.camera_stream import CameraStream
 from src.utils import get_config, logger
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -17,13 +18,17 @@ _robot: Robot | None = None
 _mowing: MowingController | None = None
 _gps: GPSRTKModule | None = None
 _mowing_gps: GPSMowingController | None = None
+_camera: CameraStream | None = None
 
 
 def init_robot():
-    global _robot, _mowing, _gps, _mowing_gps
+    global _robot, _mowing, _gps, _mowing_gps, _camera
     cfg = get_config()
     _robot = Robot()
     _mowing = MowingController(_robot, cfg["mowing"])
+
+    _camera = CameraStream(cfg.get("camera", {}))
+    _camera.start()
 
     if cfg.get("gps", {}).get("enabled"):
         _gps = GPSRTKModule(cfg["gps"])
@@ -48,6 +53,8 @@ def _status_broadcast():
                 }
             if _mowing_gps:
                 status["gps_mowing"] = _mowing_gps.progress
+            if _camera:
+                status["camera_connected"] = _camera.is_connected
             socketio.emit("status", status)
         time.sleep(0.2)
 
@@ -69,6 +76,17 @@ def zone_editor():
 @app.route("/teleop")
 def teleop():
     return render_template("teleop.html")
+
+
+@app.route("/stream")
+def stream():
+    """Flux vidéo MJPEG (caméra Wyze RTSP ou Raspberry Pi) montée sur la tête."""
+    if not _camera:
+        return "", 503
+    return Response(
+        _camera.mjpeg_generator(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @app.route("/api/status")

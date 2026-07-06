@@ -22,6 +22,7 @@ Pour modifier les dimensions (diamètre moteur, taille de maillon…) : éditer
 | `stl/idler_wheel.stl` | 2 | PETG | 40% | 4 | Non | ~1h30 |
 | `stl/motor_mount.stl` | 4 | PETG | 60% | 4 | Non | ~1h |
 | `stl/blade_guard.stl` | 1 | PETG/ABS | 60% | **6** | Non | ~3h |
+| `stl/head_camera_mount.stl` | 1 | PETG | 30% | 3 | Non | ~1h30 |
 
 > Les goupilles imprimées (`track_pin.stl`) fonctionnent, mais pour une chenille
 > qui dure : couper des tiges d'acier ø4mm à 44mm (voir quincaillerie).

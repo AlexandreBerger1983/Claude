@@ -10,3 +10,4 @@ gevent==24.11.1
 gevent-websocket==0.10.1
 pyserial==3.5
 pynmea2==1.19.0
+opencv-python-headless==4.11.0.86
