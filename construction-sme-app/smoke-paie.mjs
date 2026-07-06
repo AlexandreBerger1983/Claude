@@ -10,7 +10,7 @@ page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.
 
 // 1. Paramètres
 await page.goto(base + '/parametres')
-await page.waitForSelector('text=Paramètres de l\'entreprise', { timeout: 5000 })
+await page.waitForSelector('text=Paramètres', { timeout: 5000 })
 await page.fill('input[placeholder="ex: Claude Gariépy et Fils Inc."]', 'Claude Gariépy et Fils Inc.')
 await page.fill('input[placeholder="ex: Alexandre Berger"]', 'Alexandre Berger')
 await page.fill('input[placeholder="ex: 8001-2345-67"]', '5678-1234-01')
@@ -55,7 +55,7 @@ console.log('OK: onglet licences avec données importées —', firstLicenseName
 
 // 3. Vérifie que les infos d'entreprise se propagent aux documents
 await page.goto(base + '/')
-await page.waitForSelector('text=Chiffre d\'affaires', { timeout: 5000 })
+await page.waitForSelector('text=Facturé en', { timeout: 5000 })
 console.log('OK: tableau de bord toujours fonctionnel')
 
 await page.goto(base + '/soumissions/1')

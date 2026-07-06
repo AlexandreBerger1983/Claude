@@ -13,16 +13,16 @@ import clsx from 'clsx'
 const nav = [
   { label: 'Tableau de bord', to: '/', icon: LayoutDashboard },
   { label: 'Projets', to: '/projets', icon: FolderKanban },
+  { label: 'Calendrier', to: '/calendrier', icon: Calendar },
   { label: '✦ Estimateur', to: '/estimateur', icon: Calculator, highlight: true },
   { label: 'Soumissions', to: '/soumissions', icon: FileText },
+  { label: 'Matériaux', to: '/materiaux', icon: Package },
   { label: 'Facturation', to: '/facturation', icon: Receipt },
   { label: 'Clients', to: '/clients', icon: Users },
   { label: 'Employés', to: '/employes', icon: HardHat },
   { label: 'Feuilles de temps', to: '/feuilles-de-temps', icon: Clock },
   { label: 'Paie & Heures', to: '/paie', icon: Wallet },
-  { label: 'Matériaux', to: '/materiaux', icon: Package },
   { label: 'Sous-traitants', to: '/sous-traitants', icon: Wrench },
-  { label: 'Calendrier', to: '/calendrier', icon: Calendar },
   { label: 'Documents', to: '/documents', icon: FolderOpen },
   { label: 'Rapports', to: '/rapports', icon: BarChart3 },
 ]

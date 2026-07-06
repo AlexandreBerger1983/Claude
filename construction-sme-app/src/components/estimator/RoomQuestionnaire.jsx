@@ -1,7 +1,59 @@
 import { useState, useMemo } from 'react'
-import { X, ClipboardList, ChevronDown } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { X, ClipboardList, ChevronDown, Settings2 } from 'lucide-react'
 import { formatCurrency } from '../../utils/formatters'
 import clsx from 'clsx'
+
+// Prix d'une question : calculé automatiquement, mais modifiable d'un clic
+// (« Ajuster ») pour entrer son propre montant à la place.
+function PriceControl({ question, values, overrides, setOverrides }) {
+  const parsed = {}
+  for (const inp of question.inputs) {
+    parsed[inp.name] = inp.type === 'number' ? (parseFloat(values[inp.name]) || 0) : values[inp.name]
+  }
+  const qLines = question.lines(parsed)
+  const autoTotal = qLines.reduce((s, l) => s + l.qty * ((l.unitMat || 0) + (l.unitLabor || 0)), 0)
+  const hasOverride = overrides[question.id] !== undefined && overrides[question.id] !== ''
+
+  if (autoTotal <= 0 && !hasOverride) return null
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {hasOverride ? (
+        <>
+          <span className="text-xs text-slate-500">Prix ajusté :</span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number" min="0" step="10" inputMode="decimal"
+              value={overrides[question.id]}
+              onChange={e => setOverrides(o => ({ ...o, [question.id]: e.target.value }))}
+              onFocus={e => e.target.select()}
+              className="input w-28 py-1 text-sm text-right font-bold"
+              autoFocus
+            />
+            <span className="text-xs text-slate-400">$</span>
+          </div>
+          <button
+            onClick={() => setOverrides(o => { const n = { ...o }; delete n[question.id]; return n })}
+            className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+          >
+            Revenir au calcul auto ({formatCurrency(autoTotal)})
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-xs font-bold text-emerald-700">≈ {formatCurrency(autoTotal)}</p>
+          <button
+            onClick={() => setOverrides(o => ({ ...o, [question.id]: String(Math.round(autoTotal)) }))}
+            className="text-[11px] text-brand-500 hover:text-brand-700 underline"
+          >
+            Ajuster ce prix
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
 
 // Questionnaire d'estimation détaillé pour une pièce — reproduit le
 // formulaire papier : chaque travail possible est une question Oui/Non ;
@@ -10,6 +62,8 @@ import clsx from 'clsx'
 export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClose }) {
   // réponses : { [questionId]: { yes: bool, values: {...} } }
   const [answers, setAnswers] = useState({})
+  // prix ajusté à la main pour une question (remplace le calcul automatique)
+  const [overrides, setOverrides] = useState({})
   const [openSections, setOpenSections] = useState(() => ({ [questionnaire.sections[0]?.title]: true }))
 
   const defaultsFor = (question) => {
@@ -46,6 +100,12 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           continue
         }
         if (!ans?.yes) continue
+        const override = parseFloat(overrides[question.id])
+        if (!Number.isNaN(override) && overrides[question.id] !== '') {
+          // prix ajusté à la main : une seule ligne au montant choisi
+          if (override > 0) lines.push({ description: question.label, qty: 1, unit: 'forfait', unitMat: override, unitLabor: 0 })
+          continue
+        }
         const values = ans.values ?? defaultsFor(question)
         const parsed = {}
         for (const inp of question.inputs) {
@@ -58,7 +118,7 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
     }
     const total = lines.reduce((s, l) => s + l.qty * ((l.unitMat || 0) + (l.unitLabor || 0)), 0)
     return { lines, notes, total }
-  }, [answers, questionnaire])
+  }, [answers, overrides, questionnaire])
 
   const yesCount = Object.values(answers).filter(a => a.yes).length
 
@@ -180,25 +240,14 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
                                   )}
                                 </div>
                               ))}
-                              {/* prix estimé de la question */}
-                              {(() => {
-                                const parsed = {}
-                                for (const inp of question.inputs) parsed[inp.name] = inp.type === 'number' ? (parseFloat(values[inp.name]) || 0) : values[inp.name]
-                                const qLines = question.lines(parsed)
-                                const qTotal = qLines.reduce((s, l) => s + l.qty * ((l.unitMat || 0) + (l.unitLabor || 0)), 0)
-                                return qTotal > 0 ? (
-                                  <p className="text-xs font-bold text-emerald-700">≈ {formatCurrency(qTotal)}</p>
-                                ) : null
-                              })()}
+                              <PriceControl question={question} values={values} overrides={overrides} setOverrides={setOverrides} />
                             </div>
                           )}
-                          {isYes && question.inputs.length === 0 && (() => {
-                            const qLines = question.lines({})
-                            const qTotal = qLines.reduce((s, l) => s + l.qty * ((l.unitMat || 0) + (l.unitLabor || 0)), 0)
-                            return qTotal > 0 ? (
-                              <p className="mt-1.5 ml-2 pl-3 border-l-2 border-emerald-200 text-xs font-bold text-emerald-700">≈ {formatCurrency(qTotal)}</p>
-                            ) : null
-                          })()}
+                          {isYes && question.inputs.length === 0 && (
+                            <div className="mt-1.5 ml-2 pl-3 border-l-2 border-emerald-200">
+                              <PriceControl question={question} values={values} overrides={overrides} setOverrides={setOverrides} />
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -214,6 +263,9 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           <div className="flex-1 min-w-0">
             <p className="text-[11px] text-slate-400 uppercase tracking-wide">{yesCount} travaux « Oui » · {lines.length} ligne(s) au devis</p>
             <p className="text-xl font-extrabold text-brand-600">{formatCurrency(total)}</p>
+            <Link to="/parametres?onglet=tarifs" className="text-[11px] text-brand-500 hover:underline flex items-center gap-1">
+              <Settings2 size={11} /> Paramétrer les prix par défaut
+            </Link>
           </div>
           <button onClick={onClose} className="btn-secondary flex-shrink-0">Annuler</button>
           <button

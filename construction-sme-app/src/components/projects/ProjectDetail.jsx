@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, User, Calendar, CheckCircle, Circle, Clock } from 'lucide-react'
+import { ArrowLeft, MapPin, User, Calendar, CheckCircle, Circle, Clock, Phone, Mail } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor, progressColor, budgetHealthColor } from '../../utils/formatters'
 import FormModal from '../ui/FormModal'
@@ -100,16 +100,45 @@ export default function ProjectDetail() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card flex items-start gap-3 py-3.5">
           <User size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-slate-500">Responsable</p>
             <p className="text-sm font-semibold text-slate-800">{project.manager || '—'}</p>
+            {(() => {
+              const mgr = data.employees.find(e => e.name === project.manager)
+              if (!mgr) return null
+              return (
+                <div className="mt-1 space-y-0.5">
+                  {mgr.phone && (
+                    <a href={`tel:${mgr.phone}`} className="flex items-center gap-1.5 text-xs text-brand-600 hover:underline">
+                      <Phone size={11} /> {mgr.phone}
+                    </a>
+                  )}
+                  {mgr.email && (
+                    <a href={`mailto:${mgr.email}`} className="flex items-center gap-1.5 text-xs text-brand-600 hover:underline truncate">
+                      <Mail size={11} /> {mgr.email}
+                    </a>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
         <div className="card flex items-start gap-3 py-3.5">
           <MapPin size={16} className="text-slate-400 mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="min-w-0">
             <p className="text-xs text-slate-500">Adresse du chantier</p>
-            <p className="text-sm font-semibold text-slate-800 leading-snug">{project.address || '—'}</p>
+            {project.address ? (
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(project.address)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-sm font-semibold text-blue-600 hover:underline leading-snug block"
+                title="Ouvrir dans Google Maps"
+              >
+                {project.address} ↗
+              </a>
+            ) : (
+              <p className="text-sm font-semibold text-slate-800">—</p>
+            )}
           </div>
         </div>
         <div className="card flex items-start gap-3 py-3.5">

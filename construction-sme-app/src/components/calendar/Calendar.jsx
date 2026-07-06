@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Calendar as CalIcon, CheckCircle, Circle, Clock, ChevronRight as Arrow, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CheckCircle, Circle, Clock, ChevronRight as Arrow, X, MapPin, Phone, Mail, User } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatDate, statusColor } from '../../utils/formatters'
 import clsx from 'clsx'
@@ -33,6 +33,11 @@ export default function Calendar() {
     const idx = activeProjectsList.findIndex(p => p.id === projectId)
     return projectColors[(idx >= 0 ? idx : 0) % projectColors.length]
   }
+
+  // lien Google Maps pour une adresse de chantier
+  const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`
+  // coordonnées du responsable (courriel / téléphone) depuis le module Employés
+  const managerOf = (p) => data.employees.find(e => e.name === p.manager)
 
   const getProjectsForDay = (day) => {
     const date = new Date(year, month, day)
@@ -164,18 +169,46 @@ export default function Calendar() {
               {selectedProjects.length > 0 && (
                 <div className="space-y-1.5 mb-3">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Chantiers actifs ce jour</p>
-                  {selectedProjects.map(p => (
-                    <Link key={p.id} to={`/projets/${p.id}`}
-                      className="flex items-center gap-2.5 bg-white rounded-lg px-3 py-2 hover:shadow-sm border border-slate-100 hover:border-brand-200 transition-all group">
-                      <span className={clsx('w-2.5 h-2.5 rounded-sm flex-shrink-0', colorOf(p.id))} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-slate-700 group-hover:text-brand-600 truncate">{p.name}</p>
-                        <p className="text-xs text-slate-400">{p.code} · {p.client} · {p.progress}%</p>
+                  {selectedProjects.map(p => {
+                    const mgr = managerOf(p)
+                    return (
+                      <div key={p.id} className="bg-white rounded-lg px-3 py-2.5 border border-slate-100 hover:border-brand-200 hover:shadow-sm transition-all">
+                        <Link to={`/projets/${p.id}`} className="flex items-center gap-2.5 group">
+                          <span className={clsx('w-2.5 h-2.5 rounded-sm flex-shrink-0', colorOf(p.id))} />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-700 group-hover:text-brand-600 truncate">{p.name}</p>
+                            <p className="text-xs text-slate-400">{p.code} · {p.client} · {p.progress}%</p>
+                          </div>
+                          <span className={clsx('badge flex-shrink-0', statusColor[p.status])}>{p.status}</span>
+                          <Arrow size={14} className="text-slate-300 group-hover:text-brand-400 flex-shrink-0" />
+                        </Link>
+                        <div className="mt-1.5 ml-5 space-y-0.5">
+                          {p.address && (
+                            <a href={mapsUrl(p.address)} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 text-xs text-blue-600 hover:underline"
+                              title="Ouvrir dans Google Maps">
+                              <MapPin size={11} className="flex-shrink-0" /> {p.address}
+                            </a>
+                          )}
+                          {p.manager && (
+                            <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
+                              <span className="flex items-center gap-1"><User size={11} /> {p.manager}</span>
+                              {mgr?.phone && (
+                                <a href={`tel:${mgr.phone}`} className="flex items-center gap-1 text-brand-600 hover:underline">
+                                  <Phone size={11} /> {mgr.phone}
+                                </a>
+                              )}
+                              {mgr?.email && (
+                                <a href={`mailto:${mgr.email}`} className="flex items-center gap-1 text-brand-600 hover:underline">
+                                  <Mail size={11} /> {mgr.email}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <span className={clsx('badge flex-shrink-0', statusColor[p.status])}>{p.status}</span>
-                      <Arrow size={14} className="text-slate-300 group-hover:text-brand-400 flex-shrink-0" />
-                    </Link>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
@@ -215,10 +248,50 @@ export default function Calendar() {
                     <Arrow size={13} className="text-slate-300 group-hover:text-brand-400 flex-shrink-0" />
                   </div>
                   <p className="text-xs text-slate-500">{formatDate(p.startDate)} → {formatDate(p.endDate)}</p>
+                  {p.address && (
+                    <span
+                      role="link" tabIndex={0}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(mapsUrl(p.address), '_blank', 'noopener') }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); window.open(mapsUrl(p.address), '_blank', 'noopener') } }}
+                      className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:underline cursor-pointer"
+                      title="Ouvrir dans Google Maps"
+                    >
+                      <MapPin size={11} className="flex-shrink-0" /> <span className="truncate">{p.address}</span>
+                    </span>
+                  )}
                   <div className="mt-2 progress-bar">
                     <div className={clsx('progress-fill', colorOf(p.id))} style={{ width: `${p.progress}%` }} />
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">{p.progress}%{p.manager ? ` · ${p.manager}` : ''}</p>
+                  {(() => {
+                    const mgr = managerOf(p)
+                    return (
+                      <div className="text-xs text-slate-400 mt-1 space-y-0.5">
+                        <p>{p.progress}%{p.manager ? ` · ${p.manager}` : ''}</p>
+                        {(mgr?.phone || mgr?.email) && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {mgr?.phone && (
+                              <span
+                                role="link" tabIndex={0}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `tel:${mgr.phone}` }}
+                                className="flex items-center gap-1 text-brand-600 hover:underline cursor-pointer"
+                              >
+                                <Phone size={10} /> {mgr.phone}
+                              </span>
+                            )}
+                            {mgr?.email && (
+                              <span
+                                role="link" tabIndex={0}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `mailto:${mgr.email}` }}
+                                className="flex items-center gap-1 text-brand-600 hover:underline cursor-pointer truncate"
+                              >
+                                <Mail size={10} /> {mgr.email}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </Link>
               ))}
             </div>

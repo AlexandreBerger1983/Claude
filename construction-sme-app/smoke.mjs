@@ -60,7 +60,7 @@ console.log('OK: devis visible dans la liste')
 
 // 10. Dashboard still renders on mobile
 await page.goto(base + '/')
-await page.waitForSelector('text=Chiffre d\'affaires', { timeout: 5000 })
+await page.waitForSelector('text=Facturé en', { timeout: 5000 })
 console.log('OK: tableau de bord mobile')
 
 await browser.close()

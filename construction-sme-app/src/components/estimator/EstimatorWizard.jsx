@@ -17,7 +17,8 @@ import {
 } from './estimatorUtils'
 import Stepper from './Stepper'
 import RoomQuestionnaire from './RoomQuestionnaire'
-import { questionnaireForRoom } from '../../data/roomQuestionnaires'
+import { questionnaireForRoom, defaultRates, RATES_KEY } from '../../data/roomQuestionnaires'
+import { readStorage } from '../../hooks/useLocalStorage'
 import clsx from 'clsx'
 
 const STEPS = [
@@ -331,6 +332,8 @@ function StepWorks({ draft, update }) {
   const [showCustom, setShowCustom] = useState(false) // formulaire ligne personnalisée
   const [showInventory, setShowInventory] = useState(false)
   const [showQuestionnaire, setShowQuestionnaire] = useState(false)
+  // tarifs du questionnaire : valeurs par défaut + personnalisations (Paramètres)
+  const questionnaireRates = { ...defaultRates(), ...readStorage(RATES_KEY, {}) }
   const [invSearch, setInvSearch] = useState('')
 
   useEffect(() => {
@@ -572,7 +575,7 @@ function StepWorks({ draft, update }) {
         onClick={() => setShowQuestionnaire(true)}
         className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-bold shadow-sm transition-colors"
       >
-        📋 Questionnaire détaillé — {questionnaireForRoom(activeRoom).title}
+        📋 Questionnaire détaillé — {questionnaireForRoom(activeRoom, questionnaireRates).title}
       </button>
 
       {/* Ajouts manuels : sans passer par la superficie de la pièce */}
@@ -665,7 +668,7 @@ function StepWorks({ draft, update }) {
       {showQuestionnaire && activeRoom && (
         <RoomQuestionnaire
           room={activeRoom}
-          questionnaire={questionnaireForRoom(activeRoom)}
+          questionnaire={questionnaireForRoom(activeRoom, questionnaireRates)}
           onSubmit={addFromQuestionnaire}
           onClose={() => setShowQuestionnaire(false)}
         />
