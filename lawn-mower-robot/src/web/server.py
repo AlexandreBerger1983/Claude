@@ -64,6 +64,7 @@ _mowing: MowingController | None = None
 _gps: GPSRTKModule | None = None
 _mowing_gps: GPSMowingController | None = None
 _camera: CameraStream | None = None
+_detector = None
 
 
 def init_robot():
@@ -74,6 +75,16 @@ def init_robot():
 
     _camera = CameraStream(cfg.get("camera", {}))
     _camera.start()
+
+    # Détection personne/animal sur le flux caméra → coupe la lame
+    safety_cfg = cfg.get("safety", {})
+    if safety_cfg.get("person_detection", {}).get("enabled"):
+        from src.hardware.vision_safety import PersonAnimalDetector
+        global _detector
+        _detector = PersonAnimalDetector(
+            safety_cfg["person_detection"], _camera, _robot.safety
+        )
+        _detector.start()
 
     if cfg.get("gps", {}).get("enabled"):
         _gps = GPSRTKModule(cfg["gps"])

@@ -5,7 +5,9 @@ from enum import Enum, auto
 
 from src.hardware import MotorController, BladeController, DualArmController, SensorArray
 from src.hardware.head import HeadController
+from src.hardware.imu import IMUSensor
 from src.control.teleop import TeleopController
+from src.control.safety import SafetyMonitor
 from src.utils import get_config, logger
 
 
@@ -30,14 +32,40 @@ class Robot:
         self.head = HeadController(cfg["arms"].get("head", {}), self.arms.pca)
         self.teleop = TeleopController(self.arms, self.head, cfg.get("teleop", {}))
         self.sensors = SensorArray(cfg["sensors"], emergency_callback=self.emergency_stop)
+        self.imu = IMUSensor(cfg.get("imu", {}))
+
+        # Moniteur de sécurité : coupe la lame si personne/animal/inclinaison/collision
+        self.safety = SafetyMonitor(
+            cfg.get("safety", {}),
+            tilt_fn=self.imu.is_tilted,
+            bumper_fn=self.sensors.bumper_pressed,
+            on_hazard=self._on_hazard,
+            on_clear=self._on_hazard_clear,
+        )
 
         self._watchdog_timeout = cfg["web"].get("watchdog_timeout", 3.0)
         self._last_command_time = time.time()
         self._watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
 
         self.sensors.start_polling(interval=0.1)
+        self.safety.start()
         self._watchdog_thread.start()
         logger.info("Robot initialisé - mode IDLE")
+
+    # ------------------------------------------------------------------
+    # Sécurité (déclenchée par le moniteur)
+    # ------------------------------------------------------------------
+
+    def _on_hazard(self, hazards: list):
+        """Danger détecté : coupe la lame et stoppe les moteurs immédiatement."""
+        self.blade.stop()
+        # Pendant une tonte automatique, on stoppe aussi le déplacement
+        if self._mode in (RobotMode.MOWING, RobotMode.MANUAL):
+            self.motors.stop()
+        logger.critical(f"Sécurité : lame coupée ({', '.join(hazards)})")
+
+    def _on_hazard_clear(self):
+        logger.info("Sécurité : plus de danger (la lame reste coupée jusqu'à relance)")
 
     # ------------------------------------------------------------------
     # Watchdog
@@ -144,6 +172,9 @@ class Robot:
         with self._lock:
             if self._mode == RobotMode.EMERGENCY:
                 return
+            if self.safety.hazard_active:
+                logger.warning(f"Danger actif ({self.safety.status['hazards']}) - démarrage lame refusé")
+                return
             if not self.sensors.blade_should_stop():
                 self.blade.start()
             else:
@@ -185,6 +216,8 @@ class Robot:
             "teleop_active": self.teleop.active,
             "distances": distances,
             "obstacle_ahead": self.sensors.obstacle_ahead(),
+            "safety": self.safety.status,
+            "imu": self.imu.angles,
         }
 
     # ------------------------------------------------------------------
@@ -194,6 +227,8 @@ class Robot:
     def cleanup(self):
         self.stop()
         self.teleop.stop()
+        self.safety.stop()
+        self.imu.cleanup()
         self.sensors.cleanup()
         self.head.cleanup()
         self.arms.cleanup()

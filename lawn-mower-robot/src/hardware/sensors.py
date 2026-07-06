@@ -67,6 +67,7 @@ class SensorArray:
         self._obstacle_dist = config.get("obstacle_distance", 40)
         self._blade_stop_dist = config.get("blade_stop_distance", 30)
         self._emergency_pin = config.get("emergency_button")
+        self._bumper_pins = config.get("bumper", [])   # micro-switches pare-chocs
 
         if _GPIO_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
@@ -83,7 +84,16 @@ class SensorArray:
                     callback=self._on_emergency,
                     bouncetime=300,
                 )
+
+            for pin in self._bumper_pins:
+                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         logger.info("Capteurs initialisés")
+
+    def bumper_pressed(self) -> bool:
+        """Vrai si un micro-switch de pare-chocs est enfoncé (contact = 0)."""
+        if not _GPIO_AVAILABLE or not self._bumper_pins:
+            return False
+        return any(GPIO.input(pin) == 0 for pin in self._bumper_pins)
 
     def _on_emergency(self, channel):
         logger.warning("BOUTON D'URGENCE PRESSÉ")

@@ -35,6 +35,20 @@ socket.on("status", data => {
     $("angles-right").textContent = fmtAngles(data.arms.right);
   }
 
+  // Bandeau de sécurité (personne/animal/inclinaison/collision)
+  const safety = data.safety || {};
+  const safetyBar = $("safety-bar");
+  if (safetyBar) {
+    const hazards = safety.hazards || [];
+    if (hazards.length) {
+      const labels = { person: "👤 Personne/animal", tilt: "⚠️ Inclinaison", bumper: "💥 Collision" };
+      safetyBar.textContent = "SÉCURITÉ — Lame coupée : " + hazards.map(h => labels[h] || h).join(", ");
+      safetyBar.classList.remove("hidden");
+    } else {
+      safetyBar.classList.add("hidden");
+    }
+  }
+
   const isEmergency = data.mode === "EMERGENCY";
   $("emergency-bar").classList.toggle("hidden", !isEmergency);
 });

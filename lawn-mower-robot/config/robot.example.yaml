@@ -89,6 +89,7 @@ sensors:
   blade_stop_distance: 30  # cm - arrêt lame
 
   emergency_button: 4    # GPIO bouton d'arrêt d'urgence
+  bumper: [12, 7]        # GPIO micro-switches pare-chocs (contact = masse)
 
 # --- Caméra (montée sur la tête pan/tilt, suit les mouvements de tête) ---
 camera:
@@ -107,6 +108,28 @@ camera:
   resolution: [640, 480] # utilisé seulement pour source "picamera"
   framerate: 15
   stream_quality: 75     # qualité JPEG 0-100 (réduire si latence)
+
+# --- Sécurité sans surveillance (Bloc 2) ---
+safety:
+  enabled: true
+  poll_interval: 0.2        # fréquence de vérification des dangers (s)
+  person_hold_time: 3.0     # maintien de l'alerte après dernière détection (s)
+
+  # Détection personne/animal par la caméra (coupe la lame)
+  person_detection:
+    enabled: true
+    min_confidence: 0.5     # seuil de confiance 0-1
+    classes: ["person", "cat", "dog"]
+    fps: 4                  # images/s analysées (l'inférence est coûteuse)
+    # Modèle EfficientDet-Lite à télécharger (voir docs/safety.md) :
+    model_path: "models/efficientdet_lite0.tflite"
+
+# --- Capteur d'inclinaison / soulèvement (MPU6050) ---
+imu:
+  enabled: true
+  i2c_bus: 1
+  i2c_address: 0x68
+  tilt_threshold: 35        # degrés (pitch ou roll) avant coupure lame
 
 # --- GPS RTK (u-blox ZED-F9P) ---
 gps:
