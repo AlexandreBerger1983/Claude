@@ -54,6 +54,20 @@ arms:
   servo_min: 150       # pulse min PCA9685
   servo_max: 600       # pulse max PCA9685
 
+  # --- Tête mobile (nuque pan/tilt) - style Johnny 5 ---
+  head:
+    pan: 8             # canal PCA9685 (rotation gauche/droite)
+    tilt: 9            # canal PCA9685 (haut/bas)
+    home: [90, 90]     # position repos [pan, tilt] en degrés
+    pan_range:  [40, 140]   # butées mécaniques rotation
+    tilt_range: [65, 115]   # butées mécaniques inclinaison
+
+# --- Téléopération (imitation par webcam) ---
+teleop:
+  smoothing: 0.4       # lissage 0=figé .. 1=aucun filtre (réactif mais saccadé)
+  max_step_deg: 20     # déplacement max des servos par mise à jour (protection)
+  send_fps: 20         # fréquence d'envoi des poses depuis le navigateur
+
 # --- Capteurs ultrasons HC-SR04 ---
 sensors:
   ultrasonic:

@@ -77,6 +77,16 @@ class ArmController:
     def set_angles(self, angles: list[float]):
         self._go_to(angles)
 
+    def set_raw(self, angles: list[float]):
+        """Positionne les servos immédiatement, sans rampe.
+        Utilisé pour la téléopération temps réel (le lissage est fait en amont)."""
+        for j, target in enumerate(angles):
+            if j >= len(self._current_angles):
+                break
+            if self._servos:
+                self._servos[j].angle = max(0, min(180, target))
+            self._current_angles[j] = target
+
     @property
     def angles(self) -> list[float]:
         return list(self._current_angles)
@@ -96,6 +106,11 @@ class DualArmController:
 
         self.left = ArmController("left", config["left"], self._pca)
         self.right = ArmController("right", config["right"], self._pca)
+
+    @property
+    def pca(self):
+        """Contrôleur PCA9685 partagé (pour la tête, mêmes canaux I2C)."""
+        return self._pca
 
     def both_home(self):
         self.left.home()

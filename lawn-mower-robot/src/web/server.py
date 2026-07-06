@@ -66,6 +66,11 @@ def zone_editor():
     return render_template("zone_editor.html")
 
 
+@app.route("/teleop")
+def teleop():
+    return render_template("teleop.html")
+
+
 @app.route("/api/status")
 def api_status():
     if not _robot:
@@ -120,6 +125,37 @@ def on_arm(data):
         return
     command = data.get("command", "home")
     _robot.arm_command(command)
+
+
+# ------------------------------------------------------------------
+# Téléopération (imitation par webcam)
+# ------------------------------------------------------------------
+
+@socketio.on("teleop_start")
+def on_teleop_start():
+    if _robot:
+        _robot.teleop_start()
+        emit("teleop_state", {"active": True})
+
+
+@socketio.on("teleop_stop")
+def on_teleop_stop():
+    if _robot:
+        _robot.teleop_stop()
+        emit("teleop_state", {"active": False})
+
+
+@socketio.on("teleop_pose")
+def on_teleop_pose(data):
+    """Reçoit les landmarks de posture depuis le navigateur de l'opérateur."""
+    if _robot:
+        _robot.teleop_pose(data.get("landmarks", {}))
+
+
+@socketio.on("head")
+def on_head(data):
+    if _robot:
+        _robot.head_move(float(data.get("pan", 0)), float(data.get("tilt", 0)))
 
 
 @socketio.on("mow_start")

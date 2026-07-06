@@ -4,6 +4,8 @@ import time
 from enum import Enum, auto
 
 from src.hardware import MotorController, BladeController, DualArmController, SensorArray
+from src.hardware.head import HeadController
+from src.control.teleop import TeleopController
 from src.utils import get_config, logger
 
 
@@ -12,6 +14,7 @@ class RobotMode(Enum):
     MANUAL = auto()
     MOWING = auto()
     TRASH = auto()
+    TELEOP = auto()
     EMERGENCY = auto()
 
 
@@ -24,6 +27,8 @@ class Robot:
         self.motors = MotorController(cfg["motors"])
         self.blade = BladeController(cfg["blade"])
         self.arms = DualArmController(cfg["arms"])
+        self.head = HeadController(cfg["arms"].get("head", {}), self.arms.pca)
+        self.teleop = TeleopController(self.arms, self.head, cfg.get("teleop", {}))
         self.sensors = SensorArray(cfg["sensors"], emergency_callback=self.emergency_stop)
 
         self._watchdog_timeout = cfg["web"].get("watchdog_timeout", 3.0)
@@ -102,6 +107,36 @@ class Robot:
                 self.arms.right.reach()
 
     # ------------------------------------------------------------------
+    # Téléopération (imitation par webcam)
+    # ------------------------------------------------------------------
+
+    def teleop_start(self):
+        with self._lock:
+            if self._mode == RobotMode.EMERGENCY:
+                return
+            self._mode = RobotMode.TELEOP
+            self.teleop.start()
+
+    def teleop_stop(self):
+        with self._lock:
+            self.teleop.stop()
+            if self._mode == RobotMode.TELEOP:
+                self._mode = RobotMode.IDLE
+            self.arms.both_home()
+            self.head.home()
+
+    def teleop_pose(self, landmarks: dict):
+        # Pas de verrou : appelé à haute fréquence, la téléop gère son propre état
+        if self._mode == RobotMode.TELEOP:
+            self.teleop.update(landmarks)
+
+    def head_move(self, pan_norm: float, tilt_norm: float):
+        with self._lock:
+            if self._mode == RobotMode.EMERGENCY:
+                return
+            self.head.set_normalized(pan_norm, tilt_norm)
+
+    # ------------------------------------------------------------------
     # Lame
     # ------------------------------------------------------------------
 
@@ -146,6 +181,8 @@ class Robot:
             "motor_speeds": self.motors.speeds,
             "blade_running": self.blade.is_running,
             "arms": self.arms.status,
+            "head": self.head.angles,
+            "teleop_active": self.teleop.active,
             "distances": distances,
             "obstacle_ahead": self.sensors.obstacle_ahead(),
         }
@@ -156,7 +193,9 @@ class Robot:
 
     def cleanup(self):
         self.stop()
+        self.teleop.stop()
         self.sensors.cleanup()
+        self.head.cleanup()
         self.arms.cleanup()
         self.motors.cleanup()
         self.blade.cleanup()
