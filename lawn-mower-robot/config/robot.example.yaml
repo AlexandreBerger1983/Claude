@@ -67,6 +67,8 @@ teleop:
   smoothing: 0.4       # lissage 0=figé .. 1=aucun filtre (réactif mais saccadé)
   max_step_deg: 20     # déplacement max des servos par mise à jour (protection)
   send_fps: 20         # fréquence d'envoi des poses depuis le navigateur
+  gripper_open: 0      # angle servo pince quand la main est ouverte
+  gripper_closed: 70   # angle servo pince quand la main est fermée (poing)
 
 # --- Capteurs ultrasons HC-SR04 ---
 sensors:

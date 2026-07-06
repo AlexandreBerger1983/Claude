@@ -7,9 +7,12 @@ from src.control.teleop import (
     elbow_flexion,
     head_pan,
     head_tilt,
+    hand_openness,
     compute_arm_angles,
     compute_head_angles,
+    compute_grip,
     TeleopController,
+    GRIPPER,
 )
 
 
@@ -82,6 +85,45 @@ def test_head_tilt_up():
     assert head_tilt((0.5, 0.3), (0.4, 0.4), (0.6, 0.4)) > 0.2
 
 
+# --- Main / pince ---
+
+def _hand(openness):
+    """Fabrique des points de main : doigts étendus (ouvert) ou repliés (fermé)."""
+    wrist = (0.5, 0.9)
+    palm  = (0.5, 0.8)          # MCP majeur, paume ~0.1 de long
+    if openness == "open":
+        # bouts de doigts loin du poignet
+        tips = [(0.5, 0.5), (0.5, 0.48), (0.5, 0.5), (0.5, 0.55)]
+    else:
+        # poing : bouts de doigts repliés près du poignet
+        tips = [(0.5, 0.82), (0.5, 0.81), (0.5, 0.82), (0.5, 0.83)]
+    return wrist, palm, tips
+
+def test_hand_open():
+    w, p, tips = _hand("open")
+    assert hand_openness(w, p, tips) > 0.8
+
+def test_hand_closed():
+    w, p, tips = _hand("closed")
+    assert hand_openness(w, p, tips) < 0.2
+
+def test_hand_degenerate():
+    # poignet == paume → pas de division par zéro
+    assert hand_openness((0.5, 0.5), (0.5, 0.5), [(0.5, 0.3)]) == 0.0
+
+def test_compute_grip_missing():
+    assert compute_grip({}, "left") is None
+
+def test_compute_grip_open():
+    w, p, tips = _hand("open")
+    lms = {
+        "left_hand_wrist": w, "left_hand_mcp": p,
+        "left_hand_tip0": tips[0], "left_hand_tip1": tips[1],
+        "left_hand_tip2": tips[2], "left_hand_tip3": tips[3],
+    }
+    assert compute_grip(lms, "left") > 0.8
+
+
 # --- compute_* avec landmarks partiels ---
 
 def test_compute_arm_missing_returns_none():
@@ -148,3 +190,18 @@ def test_teleop_head_updates():
     tc.start()
     tc.update({"nose": (0.58, 0.4), "left_ear": (0.4, 0.4), "right_ear": (0.6, 0.4)})
     assert head.last is not None
+
+def test_teleop_closed_hand_closes_gripper():
+    # Main fermée (poing) → la pince doit se refermer (angle qui augmente vers gripper_closed)
+    arms, head = _FakeArms(), _FakeHead()
+    tc = TeleopController(arms, head, {"smoothing": 1.0, "max_step_deg": 90,
+                                        "gripper_open": 0, "gripper_closed": 70})
+    tc.start()
+    w, p, tips = _hand("closed")
+    lms = {
+        "left_hand_wrist": w, "left_hand_mcp": p,
+        "left_hand_tip0": tips[0], "left_hand_tip1": tips[1],
+        "left_hand_tip2": tips[2], "left_hand_tip3": tips[3],
+    }
+    tc.update(lms)
+    assert arms.left.last[GRIPPER] > 50   # pince refermée

@@ -102,6 +102,41 @@ def compute_head_angles(landmarks: dict) -> tuple | None:
     return head_pan(nose, le, re), head_tilt(nose, le, re)
 
 
+# --- Main / pince ------------------------------------------------------------
+# Seuils du ratio (longueur doigt / paume) : main fermée .. main ouverte.
+HAND_RATIO_CLOSED = 1.2
+HAND_RATIO_OPEN = 2.4
+
+
+def hand_openness(wrist: tuple, palm: tuple, tips: list) -> float:
+    """
+    Degré d'ouverture de la main, normalisé 0 (poing fermé) .. 1 (main ouverte).
+    `palm` = articulation du majeur (MCP), `tips` = bouts des 4 doigts.
+    Compare la distance moyenne poignet→bout de doigt à la longueur de la paume.
+    """
+    scale = math.hypot(wrist[0] - palm[0], wrist[1] - palm[1])
+    if scale < 1e-6 or not tips:
+        return 0.0
+    avg_tip = sum(math.hypot(wrist[0] - t[0], wrist[1] - t[1]) for t in tips) / len(tips)
+    ratio = avg_tip / scale
+    norm = (ratio - HAND_RATIO_CLOSED) / (HAND_RATIO_OPEN - HAND_RATIO_CLOSED)
+    return max(0.0, min(1.0, norm))
+
+
+def compute_grip(landmarks: dict, side: str) -> float | None:
+    """Ouverture de la main d'un côté (0..1) à partir des landmarks de main.
+    Retourne None si la main n'est pas détectée."""
+    wrist_key = f"{side}_hand_wrist"
+    palm_key = f"{side}_hand_mcp"
+    tip_keys = [f"{side}_hand_tip{i}" for i in range(4)]
+    if wrist_key not in landmarks or palm_key not in landmarks:
+        return None
+    tips = [landmarks[k] for k in tip_keys if k in landmarks]
+    if not tips:
+        return None
+    return hand_openness(landmarks[wrist_key], landmarks[palm_key], tips)
+
+
 # ---------------------------------------------------------------------------
 # Contrôleur de téléopération
 # ---------------------------------------------------------------------------
@@ -119,6 +154,9 @@ class TeleopController:
         self._head = head
         self._alpha = cfg.get("smoothing", 0.4)        # 0=figé, 1=aucun lissage
         self._max_step = cfg.get("max_step_deg", 20)   # ° max par update
+        # Pince : angle servo main ouverte / main fermée
+        self._grip_open = cfg.get("gripper_open", 0)
+        self._grip_closed = cfg.get("gripper_closed", 70)
         self._active = False
 
         # État lissé courant (copie des positions repos des bras)
@@ -151,17 +189,28 @@ class TeleopController:
         if not self._active:
             return
 
-        # --- Bras ---
+        # --- Bras + pinces ---
         for side in ("left", "right"):
-            result = compute_arm_angles(landmarks, side)
-            if result is None:
-                continue
-            shoulder_target, elbow_target = result
             state = self._arm_state[side]
-            state[SHOULDER] = self._smooth(state[SHOULDER], shoulder_target)
-            state[ELBOW] = self._smooth(state[ELBOW], elbow_target)
-            # poignet et pince conservent leur valeur (non pilotés par la pose)
-            getattr(self._arms, side).set_raw(state)
+            changed = False
+
+            arm = compute_arm_angles(landmarks, side)
+            if arm is not None:
+                shoulder_target, elbow_target = arm
+                state[SHOULDER] = self._smooth(state[SHOULDER], shoulder_target)
+                state[ELBOW] = self._smooth(state[ELBOW], elbow_target)
+                changed = True
+
+            # Pince pilotée par l'ouverture de la main (main ouverte → pince ouverte)
+            grip = compute_grip(landmarks, side)
+            if grip is not None:
+                gripper_target = self._grip_open + (1 - grip) * (self._grip_closed - self._grip_open)
+                state[GRIPPER] = self._smooth(state[GRIPPER], gripper_target)
+                changed = True
+
+            # poignet conserve sa valeur (non piloté)
+            if changed:
+                getattr(self._arms, side).set_raw(state)
 
         # --- Tête ---
         if self._head:
