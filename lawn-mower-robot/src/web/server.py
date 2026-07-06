@@ -12,6 +12,7 @@ from flask_socketio import SocketIO, emit, disconnect
 
 from src.control import Robot, MowingController
 from src.control.mowing_gps import GPSMowingController
+from src.control.notifications import EventLevel
 from src.hardware.gps_rtk import GPSRTKModule
 from src.hardware.camera_stream import CameraStream
 from src.web.auth import Credentials, LoginThrottle
@@ -127,6 +128,21 @@ def _init_automation(cfg: dict):
         rain_fn=_robot.sensors.rain_detected,
     )
     _scheduler.start()
+
+    # Batterie faible → retour à la base de recharge (Bloc 3)
+    dock = cfg.get("battery", {}).get("dock")
+
+    def _return_to_base():
+        _robot.notifier.notify("Batterie faible", "Retour à la base de recharge.",
+                               level=EventLevel.WARNING, key="battery_low")
+        if _mowing:
+            _mowing.stop()
+        if _mowing_gps and dock:
+            _mowing_gps.stop()
+            _mowing_gps.navigate_to(dock["lat"], dock["lon"])
+
+    _robot.battery.set_callbacks(on_low=lambda: socketio.start_background_task(_return_to_base))
+    _robot.battery.start()
 
 
 def _status_broadcast():

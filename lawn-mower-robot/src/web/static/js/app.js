@@ -24,6 +24,15 @@ socket.on("status", data => {
   $("status-blade").textContent = data.blade_running ? "🟢 ON" : "🔴 OFF";
   $("status-obstacle").textContent = data.obstacle_ahead ? "⚠️ Obstacle" : "✅ Libre";
 
+  const batt = data.battery || {};
+  const battEl = $("status-battery");
+  if (battEl && batt.enabled) {
+    const icon = batt.charging ? "🔌" : (batt.percent <= 25 ? "🪫" : "🔋");
+    battEl.textContent = `${icon} ${batt.percent}%`;
+  } else if (battEl) {
+    battEl.textContent = "—";
+  }
+
   const dist = data.distances || {};
   $("dist-front").textContent = fmt(dist.front);
   $("dist-rear").textContent  = fmt(dist.rear);

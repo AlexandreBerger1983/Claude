@@ -6,6 +6,7 @@ from enum import Enum, auto
 from src.hardware import MotorController, BladeController, DualArmController, SensorArray
 from src.hardware.head import HeadController
 from src.hardware.imu import IMUSensor
+from src.hardware.battery import BatteryMonitor
 from src.control.teleop import TeleopController
 from src.control.safety import SafetyMonitor
 from src.control.notifications import Notifier, EventLevel
@@ -35,6 +36,9 @@ class Robot:
         self.sensors = SensorArray(cfg["sensors"], emergency_callback=self.emergency_stop)
         self.imu = IMUSensor(cfg.get("imu", {}))
         self.notifier = Notifier(cfg.get("notifications", {}))
+        self.battery = BatteryMonitor(cfg.get("battery", {}))
+        # Batterie critique → arrêt d'urgence (le retour base est câblé côté serveur)
+        self.battery.set_callbacks(on_critical=self._on_battery_critical)
 
         # Moniteur de sécurité : coupe la lame si personne/animal/inclinaison/collision
         self.safety = SafetyMonitor(
@@ -73,6 +77,14 @@ class Robot:
 
     def _on_hazard_clear(self):
         logger.info("Sécurité : plus de danger (la lame reste coupée jusqu'à relance)")
+
+    def _on_battery_critical(self):
+        self.emergency_stop()
+        self.notifier.notify(
+            "Batterie critique",
+            "Niveau critique : arrêt d'urgence du robot.",
+            level=EventLevel.CRITICAL, key="battery_critical",
+        )
 
     # ------------------------------------------------------------------
     # Watchdog
@@ -225,6 +237,7 @@ class Robot:
             "obstacle_ahead": self.sensors.obstacle_ahead(),
             "safety": self.safety.status,
             "imu": self.imu.angles,
+            "battery": self.battery.status,
         }
 
     # ------------------------------------------------------------------
@@ -235,6 +248,7 @@ class Robot:
         self.stop()
         self.teleop.stop()
         self.safety.stop()
+        self.battery.stop()
         self.imu.cleanup()
         self.sensors.cleanup()
         self.head.cleanup()

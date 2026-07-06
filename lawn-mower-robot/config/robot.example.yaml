@@ -110,6 +110,17 @@ camera:
   framerate: 15
   stream_quality: 75     # qualité JPEG 0-100 (réduire si latence)
 
+# --- Batterie & retour à la base (Bloc 3) ---
+battery:
+  enabled: true
+  i2c_address: 0x40         # INA219 (différent du PCA9685 si sur même bus : 0x41)
+  shunt_ohms: 0.1
+  cells: 3                  # pack LiPo 3S (ou 4)
+  poll_interval: 30         # secondes entre mesures
+  return_threshold: 25      # % → retour à la base de recharge
+  shutdown_threshold: 12    # % → arrêt d'urgence
+  dock: {lat: 45.5019, lon: -73.5675}   # position GPS de la station de charge
+
 # --- Sécurité sans surveillance (Bloc 2) ---
 safety:
   enabled: true
