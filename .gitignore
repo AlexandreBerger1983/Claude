@@ -6,3 +6,4 @@ invoice_config.json
 .streamlit/secrets.toml
 mise_o_jeu.log
 bets_history.json
+session_cookies.json

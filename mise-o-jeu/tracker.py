@@ -103,6 +103,37 @@ def print_report(dry_run_only: Optional[bool] = None) -> None:
     print()
 
 
+def auto_update_from_history(settled: list[dict]) -> int:
+    """
+    Met à jour automatiquement les paris en attente à partir des résultats
+    récupérés sur le site. Retourne le nombre de paris mis à jour.
+    """
+    records = _load()
+    pending = [r for r in records if r["result"] is None]
+    if not pending:
+        return 0
+
+    updated = 0
+    for record in pending:
+        for settled_bet in settled:
+            # Correspondance par mots-clés communs dans la description
+            rec_words = set(record["description"].lower().split())
+            hist_words = set(settled_bet["description"].lower().split())
+            common = rec_words & hist_words
+            if len(common) >= 3:
+                record["result"] = settled_bet["result"]
+                profit = settled_bet.get("profit")
+                record["actual_profit"] = profit if profit is not None else (
+                    record["expected_profit"] if settled_bet["result"] else -record["stake"]
+                )
+                updated += 1
+                break
+
+    if updated:
+        _save(records)
+    return updated
+
+
 def mark_result(index: int, won: bool, actual_profit: Optional[float] = None) -> None:
     """Marque le résultat d'un pari par son index (0 = premier)."""
     records = _load()

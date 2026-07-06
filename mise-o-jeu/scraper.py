@@ -8,14 +8,18 @@ Stratégie d'extraction:
 - Extraction via JavaScript pour s'adapter au DOM dynamique (SPA React)
 """
 
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 import config
+
+SESSION_FILE = Path("session_cookies.json")
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +115,7 @@ class MiseOJeuScraper:
     def __init__(self):
         self._playwright = None
         self._browser = None
+        self._context = None
         self.page = None
 
     def start(self, headless: bool = True):
@@ -119,15 +124,16 @@ class MiseOJeuScraper:
             headless=headless,
             args=["--ignore-certificate-errors", "--disable-web-security"],
         )
-        context = self._browser.new_context(
+        self._context = self._browser.new_context(
             locale="fr-CA",
             timezone_id="America/Montreal",
             ignore_https_errors=True,
         )
-        self.page = context.new_page()
+        self.page = self._context.new_page()
         logger.info("Navigateur démarré.")
 
     def stop(self):
+        self._save_session()
         if self._browser:
             self._browser.close()
         if self._playwright:
@@ -135,15 +141,56 @@ class MiseOJeuScraper:
         logger.info("Navigateur fermé.")
 
     # ------------------------------------------------------------------
-    # Connexion OAuth
+    # Persistance de session (cookies)
+    # ------------------------------------------------------------------
+
+    def _save_session(self):
+        try:
+            if self._context:
+                cookies = self._context.cookies()
+                SESSION_FILE.write_text(json.dumps(cookies, ensure_ascii=False), encoding="utf-8")
+                logger.debug("Session sauvegardée (%d cookies).", len(cookies))
+        except Exception as exc:
+            logger.warning("Impossible de sauvegarder la session: %s", exc)
+
+    def _load_session(self) -> bool:
+        try:
+            if SESSION_FILE.exists():
+                cookies = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+                self._context.add_cookies(cookies)
+                logger.info("Session précédente restaurée (%d cookies).", len(cookies))
+                return True
+        except Exception as exc:
+            logger.warning("Impossible de charger la session: %s", exc)
+        return False
+
+    def is_logged_in(self) -> bool:
+        """Vérifie si la session est toujours active sans charger de nouvelle page."""
+        try:
+            content = self.page.content()
+            return any(kw in content for kw in ("Bonjour,", "alexandre", "ALEXANDRE", "Déconnexion"))
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------------
+    # Connexion OAuth avec restauration de session
     # ------------------------------------------------------------------
 
     def login(self) -> bool:
         if not config.USERNAME or not config.PASSWORD:
             raise ValueError("MOJ_USERNAME et MOJ_PASSWORD doivent être définis dans .env")
 
+        # Tenter de restaurer la session précédente
+        self._load_session()
+
         logger.info("Chargement du site Mise O Jeu+…")
         self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
+        self.page.wait_for_timeout(2_000)
+
+        if self.is_logged_in():
+            logger.info("Session restaurée — connexion non requise.")
+            self._save_session()
+            return True
 
         try:
             logger.info("Clic sur le bouton Connexion…")
@@ -165,16 +212,84 @@ class MiseOJeuScraper:
                 wait_until="commit",
             )
             self.page.wait_for_load_state("domcontentloaded", timeout=30_000)
-            logger.info("Connexion réussie. URL: %s", self.page.url)
+            self._save_session()
+            logger.info("Connexion réussie.")
             return True
 
         except PlaywrightTimeout as exc:
             logger.error("Délai dépassé lors de la connexion: %s", exc)
-            logger.error("URL courante: %s", self.page.url)
             return False
         except Exception as exc:
             logger.error("Erreur lors de la connexion: %s", exc)
             return False
+
+    def ensure_logged_in(self) -> bool:
+        """Vérifie la session et reconnecte si nécessaire."""
+        try:
+            self.page.goto(config.MOJ_SPORTS_URL, wait_until="domcontentloaded", timeout=30_000)
+            self.page.wait_for_timeout(1_500)
+            if self.is_logged_in():
+                return True
+        except Exception:
+            pass
+        logger.warning("Session expirée — reconnexion…")
+        SESSION_FILE.unlink(missing_ok=True)
+        return self.login()
+
+    # ------------------------------------------------------------------
+    # Résultats automatiques depuis "Mes paris"
+    # ------------------------------------------------------------------
+
+    def fetch_settled_bets(self) -> list[dict]:
+        """
+        Visite la page historique et retourne les paris réglés (gagnés/perdus).
+        Chaque entrée: {description, result: True/False, profit: float}
+        """
+        settled = []
+        try:
+            self.page.goto(
+                f"{config.MOJ_BASE_URL}/sports/fr/sports/bet-history",
+                wait_until="domcontentloaded", timeout=30_000,
+            )
+            _wait_for_odds(self.page, timeout=15_000)
+
+            raw = self.page.evaluate("""
+            () => {
+                const results = [];
+                // Chercher les éléments qui indiquent gagné/perdu
+                const wonRe = /gagn[ée]|won|win/i;
+                const lostRe = /perdu|lost|lose/i;
+                const amountRe = /[+\\-]?\\d+[,\\.]\\d{2}\\s*\\$/;
+
+                const rows = document.querySelectorAll(
+                    '[class*="bet-history"] [class*="row"], '
+                    + '[class*="history"] [class*="item"], '
+                    + '[class*="ticket"], article'
+                );
+                for (const row of rows) {
+                    const text = row.innerText || '';
+                    if (!text.trim()) continue;
+                    const won = wonRe.test(text);
+                    const lost = lostRe.test(text);
+                    if (!won && !lost) continue;
+                    const amountMatch = text.match(amountRe);
+                    const profit = amountMatch
+                        ? parseFloat(amountMatch[0].replace(',', '.').replace('$', '').trim())
+                        : null;
+                    results.push({
+                        description: text.substring(0, 120).replace(/\\s+/g, ' ').trim(),
+                        result: won,
+                        profit: profit,
+                    });
+                }
+                return results;
+            }
+            """)
+            settled = raw
+            logger.info("%d pari(s) réglé(s) trouvé(s) dans l'historique.", len(settled))
+        except Exception as exc:
+            logger.warning("Impossible de lire l'historique: %s", exc)
+        return settled
 
     # ------------------------------------------------------------------
     # Solde
