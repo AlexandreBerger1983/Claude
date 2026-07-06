@@ -8,6 +8,7 @@ from src.hardware.head import HeadController
 from src.hardware.imu import IMUSensor
 from src.control.teleop import TeleopController
 from src.control.safety import SafetyMonitor
+from src.control.notifications import Notifier, EventLevel
 from src.utils import get_config, logger
 
 
@@ -33,6 +34,7 @@ class Robot:
         self.teleop = TeleopController(self.arms, self.head, cfg.get("teleop", {}))
         self.sensors = SensorArray(cfg["sensors"], emergency_callback=self.emergency_stop)
         self.imu = IMUSensor(cfg.get("imu", {}))
+        self.notifier = Notifier(cfg.get("notifications", {}))
 
         # Moniteur de sécurité : coupe la lame si personne/animal/inclinaison/collision
         self.safety = SafetyMonitor(
@@ -63,6 +65,11 @@ class Robot:
         if self._mode in (RobotMode.MOWING, RobotMode.MANUAL):
             self.motors.stop()
         logger.critical(f"Sécurité : lame coupée ({', '.join(hazards)})")
+        self.notifier.notify(
+            "Sécurité déclenchée",
+            f"Lame coupée automatiquement : {', '.join(hazards)}.",
+            level=EventLevel.CRITICAL, key="safety_hazard",
+        )
 
     def _on_hazard_clear(self):
         logger.info("Sécurité : plus de danger (la lame reste coupée jusqu'à relance)")

@@ -68,6 +68,7 @@ class SensorArray:
         self._blade_stop_dist = config.get("blade_stop_distance", 30)
         self._emergency_pin = config.get("emergency_button")
         self._bumper_pins = config.get("bumper", [])   # micro-switches pare-chocs
+        self._rain_pin = config.get("rain_sensor")     # capteur de pluie (0 = pluie)
 
         if _GPIO_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
@@ -87,6 +88,9 @@ class SensorArray:
 
             for pin in self._bumper_pins:
                 GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+            if self._rain_pin is not None:
+                GPIO.setup(self._rain_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         logger.info("Capteurs initialisés")
 
     def bumper_pressed(self) -> bool:
@@ -94,6 +98,12 @@ class SensorArray:
         if not _GPIO_AVAILABLE or not self._bumper_pins:
             return False
         return any(GPIO.input(pin) == 0 for pin in self._bumper_pins)
+
+    def rain_detected(self) -> bool:
+        """Vrai s'il pleut (sortie du capteur à 0)."""
+        if not _GPIO_AVAILABLE or self._rain_pin is None:
+            return False
+        return GPIO.input(self._rain_pin) == 0
 
     def _on_emergency(self, channel):
         logger.warning("BOUTON D'URGENCE PRESSÉ")

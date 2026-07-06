@@ -90,6 +90,16 @@ document.querySelectorAll(".arm-btn").forEach(btn => {
   });
 });
 
+// --- Poubelles automatiques ---
+const trashOut = $("btn-trash-out");
+const trashIn = $("btn-trash-in");
+if (trashOut) trashOut.addEventListener("click", () => {
+  if (confirm("Sortir la poubelle au bord de rue ?")) socket.emit("trash_out");
+});
+if (trashIn) trashIn.addEventListener("click", () => {
+  if (confirm("Rentrer la poubelle au cabanon ?")) socket.emit("trash_in");
+});
+
 // --- Arrêt d'urgence ---
 $("btn-emergency").addEventListener("click", () => {
   if (confirm("Confirmer l'arrêt d'urgence ?")) {

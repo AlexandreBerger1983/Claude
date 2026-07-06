@@ -90,6 +90,7 @@ sensors:
 
   emergency_button: 4    # GPIO bouton d'arrêt d'urgence
   bumper: [12, 7]        # GPIO micro-switches pare-chocs (contact = masse)
+  rain_sensor: 8         # GPIO capteur de pluie (sortie numérique, 0 = pluie)
 
 # --- Caméra (montée sur la tête pan/tilt, suit les mouvements de tête) ---
 camera:
@@ -173,6 +174,48 @@ web:
   # Origines autorisées pour les WebSocket ("*" = toutes ; restreindre en prod)
   # ex: ["https://robot.mon-domaine.ts.net"]
   allowed_origins: "*"
+
+# --- Planificateur de tâches (Bloc 4) ---
+scheduler:
+  enabled: true
+  check_interval: 60        # vérification chaque minute
+  tasks:
+    mow:
+      enabled: true
+      days: ["mar", "ven"]  # mardi et vendredi
+      at: "10:00"
+      skip_if_rain: true    # reporte s'il pleut
+    trash_out:
+      enabled: true
+      days: ["mer"]         # veille de collecte
+      at: "19:00"
+    trash_in:
+      enabled: true
+      days: ["jeu"]         # jour de collecte, en soirée
+      at: "18:00"
+
+# --- Poubelles : points GPS (relevés via l'éditeur de zone) ---
+trash:
+  curb: {lat: 45.5017, lon: -73.5673}   # bord de rue
+  shed: {lat: 45.5019, lon: -73.5675}   # cabanon/rangement
+
+# --- Notifications à distance (Bloc 5) ---
+notifications:
+  enabled: false            # passer à true après configuration
+  channels: ["email"]       # "email", "sms", "webhook"
+  min_level: "info"         # info | warning | critical
+  cooldown_seconds: 60      # anti-spam par type d'événement
+  email:
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: "votre@gmail.com"
+    password: "mot-de-passe-application"  # mot de passe d'application Gmail
+    from: "votre@gmail.com"
+    to: "destinataire@email.com"
+    # Passerelle SMS de l'opérateur (ex. Telus/Koodo : num@msg.telus.com)
+    sms_to: "5145551234@msg.telus.com"
+  webhook:
+    url: ""                 # URL Discord/Slack/Telegram/domotique
 
 # --- Algorithme de tonte ---
 mowing:

@@ -181,7 +181,20 @@ class GPSMowingController:
         self._state = GPSMowingState.DONE
         logger.info(f"Tonte GPS terminée - {self._strip_count} bandes")
 
-    def _navigate_to(self, target: tuple[float, float], timeout: float = 120) -> bool:
+    def navigate_to(self, lat: float, lon: float, timeout: float = 180) -> bool:
+        """Navigation publique vers un point GPS quelconque (ex. le bord de rue),
+        sans contrainte de zone de tonte. Attend un fix RTK utilisable."""
+        self._stop_event.clear()
+        deadline = time.time() + 60
+        while not self._gps.position.is_usable and time.time() < deadline:
+            time.sleep(1)
+        if not self._gps.position.is_usable:
+            logger.error("Navigation impossible : pas de fix GPS")
+            return False
+        return self._navigate_to((lat, lon), timeout=timeout, enforce_zone=False)
+
+    def _navigate_to(self, target: tuple[float, float], timeout: float = 120,
+                     enforce_zone: bool = True) -> bool:
         """Navigue vers un waypoint GPS. Retourne True si atteint."""
         deadline = time.time() + timeout
         fwd_speed = self._cfg.get("forward_speed", 50)
@@ -190,8 +203,8 @@ class GPSMowingController:
         while not self._stop_event.is_set() and time.time() < deadline:
             pos = self._gps.position
 
-            # Sécurité : sortie de zone
-            if not point_in_polygon(pos.lat, pos.lon, self._zone):
+            # Sécurité : sortie de zone (seulement en tonte)
+            if enforce_zone and not point_in_polygon(pos.lat, pos.lon, self._zone):
                 logger.warning("Robot hors zone ! Arrêt immédiat.")
                 self._robot.motors.stop()
                 time.sleep(0.5)

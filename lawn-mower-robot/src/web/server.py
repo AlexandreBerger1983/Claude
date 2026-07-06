@@ -65,6 +65,8 @@ _gps: GPSRTKModule | None = None
 _mowing_gps: GPSMowingController | None = None
 _camera: CameraStream | None = None
 _detector = None
+_scheduler = None
+_trash = None
 
 
 def init_robot():
@@ -93,6 +95,38 @@ def init_robot():
         logger.info("GPS RTK activé")
     else:
         logger.info("GPS RTK désactivé (config gps.enabled: false)")
+
+    _init_automation(cfg)
+
+
+def _init_automation(cfg: dict):
+    """Planificateur (tonte/poubelles) + contrôleur poubelles (Bloc 4)."""
+    global _scheduler, _trash
+    from src.control.trash import TrashController
+    from src.control.scheduler import Scheduler
+
+    _trash = TrashController(
+        _robot, _mowing_gps, cfg.get("trash", {}), notifier=_robot.notifier
+    )
+
+    def _action_mow():
+        _robot.notifier.notify("Tonte planifiée", "Démarrage de la tonte.", key="mow")
+        if _mowing_gps:
+            _mowing_gps.start()
+        elif _mowing:
+            _mowing.start()
+
+    actions = {
+        "mow": _action_mow,
+        "trash_out": _trash.take_out,
+        "trash_in": _trash.bring_in,
+    }
+    _scheduler = Scheduler(
+        cfg.get("scheduler", {}),
+        actions=actions,
+        rain_fn=_robot.sensors.rain_detected,
+    )
+    _scheduler.start()
 
 
 def _status_broadcast():
@@ -273,6 +307,22 @@ def on_teleop_pose(data):
 def on_head(data):
     if _robot:
         _robot.head_move(float(data.get("pan", 0)), float(data.get("tilt", 0)))
+
+
+# ------------------------------------------------------------------
+# Poubelles (déclenchement manuel à distance)
+# ------------------------------------------------------------------
+
+@socketio.on("trash_out")
+def on_trash_out():
+    if _trash:
+        socketio.start_background_task(_trash.take_out)
+
+
+@socketio.on("trash_in")
+def on_trash_in():
+    if _trash:
+        socketio.start_background_task(_trash.bring_in)
 
 
 @socketio.on("mow_start")
