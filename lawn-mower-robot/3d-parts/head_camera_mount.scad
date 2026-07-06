@@ -48,6 +48,10 @@ module head_camera_mount() {
             translate([-cam_W/2 - cam_wall/2, y, cam_H/2 + cam_wall])
                 cube([cam_wall + 2, 4, 8], center=true);
         }
+
+        // --- Encoche câble d'alimentation (arrière de la Wyze Cam v3) ---
+        translate([0, cam_D/2 + cam_wall/2, cam_wall + 6])
+            cube([12, cam_wall*3, 12], center=true);
     }
 }
 

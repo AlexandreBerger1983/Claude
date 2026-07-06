@@ -100,11 +100,14 @@ est plus réactive (< 200 ms).
 
 ## Montage mécanique
 
-- Imprimer `stl/head_camera_mount.stl` (mesurer d'abord la caméra et ajuster
-  `cam_W`, `cam_H`, `cam_D` dans `params.scad`)
+- Le berceau `stl/head_camera_mount.stl` est dimensionné pour la **Wyze Cam v3**
+  (cube ~51 × 51 × 46 mm, valeurs par défaut de `params.scad`) — rien à ajuster.
+  Pour un autre modèle, mesurer et modifier `cam_W`, `cam_H`, `cam_D`.
+- Détacher la caméra de sa base magnétique avant de la glisser dans le berceau
 - Fixer le berceau sur le palonnier du servo **tilt** de la tête
 - Maintenir la caméra avec une sangle/serre-câble via les fentes latérales
-- Faire passer le câble d'alimentation USB de la caméra le long de la nuque
+- Le câble d'alimentation USB sort par l'**encoche arrière** et descend le long
+  de la nuque
 
 La caméra étant sur la tête, elle regarde là où « regarde » le robot — et
 comme la tête suit ta propre tête en téléopération, tu vois ce que le robot
