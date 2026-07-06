@@ -81,7 +81,8 @@ export default function Calendar() {
       <div className="page-header">
         <div>
           <h2 className="section-title">Calendrier</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Cliquez sur un jour, un projet ou une échéance pour voir le détail</p>
+          <p className="text-sm text-slate-500 mt-0.5 hidden sm:block">Cliquez sur un jour, un projet ou une échéance pour voir le détail</p>
+          <p className="text-xs text-slate-500 mt-0.5 sm:hidden">Touchez un jour pour le détail</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={prev} className="btn-secondary p-2"><ChevronLeft size={16} /></button>
@@ -127,7 +128,24 @@ export default function Calendar() {
                           <span className="w-2 h-2 rounded-full bg-red-400" title={`${dayTasks.length} échéance(s)`} />
                         )}
                       </div>
-                      <div className="space-y-0.5">
+                      {/* Téléphone : simples points de couleur (les chips texte débordent trop) */}
+                      {dayProjects.length > 0 && (
+                        <div className="flex flex-wrap gap-0.5 sm:hidden">
+                          {dayProjects.slice(0, 4).map(p => (
+                            <span
+                              key={p.id}
+                              role="link"
+                              tabIndex={0}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/projets/${p.id}`) }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/projets/${p.id}`) } }}
+                              title={p.name}
+                              className={clsx('w-2 h-2 rounded-full flex-shrink-0 cursor-pointer', colorOf(p.id))}
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {/* Tablette/bureau : chips avec le code du projet */}
+                      <div className="space-y-0.5 hidden sm:block">
                         {dayProjects.slice(0, 2).map(p => (
                           <span
                             key={p.id}

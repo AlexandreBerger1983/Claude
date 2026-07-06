@@ -259,22 +259,26 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
         </div>
 
         {/* Pied : total + ajout */}
-        <div className="border-t border-slate-200 p-4 flex items-center gap-3 flex-shrink-0 bg-white rounded-b-2xl">
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] text-slate-400 uppercase tracking-wide">{yesCount} travaux « Oui » · {lines.length} ligne(s) au devis</p>
-            <p className="text-xl font-extrabold text-brand-600">{formatCurrency(total)}</p>
-            <Link to="/parametres?onglet=tarifs" className="text-[11px] text-brand-500 hover:underline flex items-center gap-1">
-              <Settings2 size={11} /> Paramétrer les prix par défaut
+        <div className="border-t border-slate-200 p-4 flex-shrink-0 bg-white rounded-b-2xl space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs text-slate-400">{yesCount} travaux « Oui » · {lines.length} ligne(s)</p>
+              <p className="text-xl font-extrabold text-brand-600">{formatCurrency(total)}</p>
+            </div>
+            <Link to="/parametres?onglet=tarifs" className="text-xs text-brand-500 hover:underline flex items-center gap-1 flex-shrink-0 text-right">
+              <Settings2 size={12} className="flex-shrink-0" /> <span className="hidden sm:inline">Paramétrer les prix par défaut</span><span className="sm:hidden">Tarifs</span>
             </Link>
           </div>
-          <button onClick={onClose} className="btn-secondary flex-shrink-0">Annuler</button>
-          <button
-            onClick={() => { onSubmit(lines, notes); onClose() }}
-            disabled={lines.length === 0}
-            className={clsx('btn-primary flex-shrink-0', lines.length === 0 && 'opacity-40 cursor-not-allowed')}
-          >
-            Ajouter au devis
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="btn-secondary flex-1 sm:flex-initial justify-center">Annuler</button>
+            <button
+              onClick={() => { onSubmit(lines, notes); onClose() }}
+              disabled={lines.length === 0}
+              className={clsx('btn-primary flex-1 sm:flex-initial justify-center', lines.length === 0 && 'opacity-40 cursor-not-allowed')}
+            >
+              Ajouter au devis
+            </button>
+          </div>
         </div>
       </div>
     </div>
