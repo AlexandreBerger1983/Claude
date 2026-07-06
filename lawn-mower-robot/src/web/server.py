@@ -1,18 +1,63 @@
 """Serveur Flask + Socket.IO pour le contrôle à distance du robot."""
 import threading
 import time
+import secrets
+from functools import wraps
 
-from flask import Flask, render_template, jsonify, Response
-from flask_socketio import SocketIO, emit
+from flask import (
+    Flask, render_template, jsonify, Response,
+    session, request, redirect, url_for,
+)
+from flask_socketio import SocketIO, emit, disconnect
 
 from src.control import Robot, MowingController
 from src.control.mowing_gps import GPSMowingController
 from src.hardware.gps_rtk import GPSRTKModule
 from src.hardware.camera_stream import CameraStream
+from src.web.auth import Credentials, LoginThrottle
 from src.utils import get_config, logger
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="gevent")
+
+# --- Sécurité : clé de session, cookies, identifiants ---
+_web_cfg = get_config().get("web", {})
+_secret = _web_cfg.get("secret_key", "")
+if not _secret or _secret == "change-me-in-production":
+    _secret = secrets.token_hex(32)
+    logger.warning("web.secret_key non défini/défaut - clé aléatoire générée "
+                   "(les sessions ne survivront pas à un redémarrage)")
+app.secret_key = _secret
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=_web_cfg.get("session_lifetime", 86400),
+)
+
+_credentials = Credentials.from_config(_web_cfg)
+_throttle = LoginThrottle(
+    max_attempts=_web_cfg.get("max_login_attempts", 5),
+    lockout_seconds=_web_cfg.get("lockout_seconds", 300),
+)
+
+# CORS restreint aux origines autorisées (ou * si non configuré)
+_allowed_origins = _web_cfg.get("allowed_origins", "*")
+socketio = SocketIO(app, cors_allowed_origins=_allowed_origins, async_mode="gevent")
+
+
+def login_required(view):
+    """Protège une route HTTP : redirige vers /login si non authentifié."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not session.get("authenticated"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def _client_ip() -> str:
+    # Derrière un reverse-proxy/VPN, X-Forwarded-For peut porter l'IP réelle
+    fwd = request.headers.get("X-Forwarded-For", "")
+    return fwd.split(",")[0].strip() if fwd else (request.remote_addr or "?")
 
 _robot: Robot | None = None
 _mowing: MowingController | None = None
@@ -60,25 +105,63 @@ def _status_broadcast():
 
 
 # ------------------------------------------------------------------
-# Routes HTTP
+# Authentification
+# ------------------------------------------------------------------
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    ip = _client_ip()
+    if request.method == "POST":
+        if _throttle.is_locked(ip):
+            wait = _throttle.seconds_remaining(ip)
+            return render_template("login.html",
+                                   error=f"Trop de tentatives. Réessayez dans {wait}s."), 429
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        if _credentials.verify(username, password):
+            _throttle.record_success(ip)
+            session.clear()
+            session["authenticated"] = True
+            session["user"] = username
+            session.permanent = True
+            logger.info(f"Connexion réussie ({username}) depuis {ip}")
+            return redirect(url_for("index"))
+        _throttle.record_failure(ip)
+        logger.warning(f"Échec de connexion depuis {ip}")
+        return render_template("login.html", error="Identifiants invalides."), 401
+    return render_template("login.html", error=None)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ------------------------------------------------------------------
+# Routes HTTP (protégées)
 # ------------------------------------------------------------------
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 
 @app.route("/zone")
+@login_required
 def zone_editor():
     return render_template("zone_editor.html")
 
 
 @app.route("/teleop")
+@login_required
 def teleop():
     return render_template("teleop.html")
 
 
 @app.route("/stream")
+@login_required
 def stream():
     """Flux vidéo MJPEG (caméra Wyze RTSP ou Raspberry Pi) montée sur la tête."""
     if not _camera:
@@ -90,6 +173,7 @@ def stream():
 
 
 @app.route("/api/status")
+@login_required
 def api_status():
     if not _robot:
         return jsonify({"error": "Robot non initialisé"}), 503
@@ -102,7 +186,11 @@ def api_status():
 
 @socketio.on("connect")
 def on_connect():
-    logger.info(f"Client connecté")
+    # Rejette toute connexion WebSocket sans session authentifiée
+    if not session.get("authenticated"):
+        logger.warning("Connexion WebSocket refusée (non authentifiée)")
+        return False
+    logger.info(f"Client connecté ({session.get('user', '?')})")
     if _robot:
         emit("status", _robot.status)
 

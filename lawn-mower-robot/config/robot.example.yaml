@@ -129,8 +129,27 @@ gps:
 web:
   host: "0.0.0.0"
   port: 5000
+  # Clé de signature des sessions. GÉNÉRER une valeur unique :
+  #   python -c "import secrets; print(secrets.token_hex(32))"
   secret_key: "change-me-in-production"
   watchdog_timeout: 3.0  # secondes sans commande avant arrêt auto
+
+  # --- Authentification (OBLIGATOIRE pour l'accès à distance) ---
+  auth:
+    username: "admin"
+    # Fournir SOIT password (haché au démarrage) SOIT password_hash (recommandé).
+    # Générer un hash :
+    #   python -c "from werkzeug.security import generate_password_hash as g; print(g('votre-mot-de-passe'))"
+    password: "changez-moi"
+    password_hash: ""       # ex: "scrypt:32768:8:1$..."
+
+  session_lifetime: 86400   # durée de session en secondes (24 h)
+  max_login_attempts: 5     # échecs avant verrouillage de l'IP
+  lockout_seconds: 300      # durée du verrouillage (5 min)
+
+  # Origines autorisées pour les WebSocket ("*" = toutes ; restreindre en prod)
+  # ex: ["https://robot.mon-domaine.ts.net"]
+  allowed_origins: "*"
 
 # --- Algorithme de tonte ---
 mowing:
