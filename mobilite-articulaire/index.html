@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mobilité articulaire — angles et lacunes de mobilité</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦵</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="entete">
+    <div>
+      <h1>Mobilité articulaire</h1>
+      <p class="sous-titre">Angles entre les articulations en direct, tests guidés et détection des lacunes de mobilité</p>
+    </div>
+  </header>
+
+  <nav class="onglets" role="tablist">
+    <button class="onglet actif" data-mode="libre" role="tab">Analyse libre</button>
+    <button class="onglet" data-mode="tests" role="tab">Tests de mobilité</button>
+    <button class="onglet" data-mode="bilan" role="tab">Bilan</button>
+  </nav>
+
+  <main>
+    <!-- Zone caméra, partagée entre « Analyse libre » et « Tests » -->
+    <section id="zone-camera">
+      <div class="cadre-video">
+        <video id="video" playsinline muted autoplay hidden></video>
+        <canvas id="canevas" width="1280" height="720"></canvas>
+        <div id="message-camera" class="message-camera">
+          <p>La caméra est nécessaire pour analyser vos mouvements.<br />
+          Rien n’est envoyé sur Internet : tout est calculé dans votre navigateur.</p>
+          <button id="btn-camera" class="btn btn-principal">Activer la caméra</button>
+          <p id="etat-chargement" class="etat-chargement" hidden>Chargement du modèle de détection…</p>
+        </div>
+      </div>
+      <div class="barre-camera" id="barre-camera" hidden>
+        <label class="commutateur"><input type="checkbox" id="chk-miroir" checked /> Miroir</label>
+        <button id="btn-changer-camera" class="btn btn-discret">Changer de caméra</button>
+        <span id="indicateur-pose" class="indicateur-pose">Aucune personne détectée</span>
+      </div>
+    </section>
+
+    <!-- Mode analyse libre -->
+    <section id="panneau-libre" class="panneau">
+      <div class="carte">
+        <h2>Analyse libre</h2>
+        <p>Placez-vous en entier dans le champ de la caméra. Les angles de chaque
+        articulation (épaules, coudes, hanches, genoux, chevilles) s’affichent en
+        direct sur le squelette. Pour une mesure fiable, orientez le plan du
+        mouvement face à la caméra : de <strong>profil</strong> pour la flexion des
+        hanches et des genoux, de <strong>face</strong> pour l’abduction des épaules.</p>
+      </div>
+    </section>
+
+    <!-- Mode tests guidés -->
+    <section id="panneau-tests" class="panneau" hidden>
+      <div class="carte">
+        <h2>Tests de mobilité guidés</h2>
+        <div class="ligne-champ">
+          <label for="sel-test">Test</label>
+          <select id="sel-test"></select>
+        </div>
+        <div class="ligne-champ">
+          <span>Côté</span>
+          <div class="groupe-boutons" id="choix-cote">
+            <button class="btn btn-choix actif" data-cote="auto">Auto</button>
+            <button class="btn btn-choix" data-cote="gauche">Gauche</button>
+            <button class="btn btn-choix" data-cote="droite">Droite</button>
+          </div>
+        </div>
+        <div class="bloc-consigne">
+          <p class="position-test" id="txt-position"></p>
+          <p id="txt-consigne"></p>
+          <p class="norme-test" id="txt-norme"></p>
+        </div>
+        <button id="btn-demarrer" class="btn btn-principal">Démarrer le test (15 s)</button>
+      </div>
+
+      <div class="carte" id="carte-mesure" hidden>
+        <div id="phase-test" class="phase-test"></div>
+        <div class="lecture-directe">
+          <div>
+            <span class="etiquette">Mesure actuelle</span>
+            <span class="valeur-directe" id="val-courante">—</span>
+          </div>
+          <div>
+            <span class="etiquette">Maximum atteint</span>
+            <span class="valeur-directe" id="val-max">—</span>
+          </div>
+        </div>
+        <div class="piste-progres"><div class="remplissage-progres" id="progres-test"></div></div>
+        <button id="btn-arreter" class="btn btn-discret" hidden>Terminer maintenant</button>
+      </div>
+
+      <div class="carte" id="carte-resultat" hidden></div>
+    </section>
+
+    <!-- Bilan -->
+    <section id="panneau-bilan" class="panneau" hidden>
+      <div class="carte">
+        <h2>Bilan de mobilité</h2>
+        <p class="texte-secondaire">Dernier résultat enregistré pour chaque test et chaque côté,
+        comparé à l’amplitude de référence. Les résultats sont conservés sur cet appareil.</p>
+        <div id="liste-bilan"></div>
+        <button id="btn-effacer" class="btn btn-discret" hidden>Effacer tous les résultats</button>
+      </div>
+      <div class="carte" id="carte-recommandations" hidden></div>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <p>⚕ Les amplitudes de référence sont indicatives (goniométrie clinique). Cette application
+    est un outil d’auto-évaluation et ne remplace pas l’avis d’un professionnel de santé.
+    En cas de douleur, interrompez le mouvement.</p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
