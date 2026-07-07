@@ -5,14 +5,33 @@ Il tond la pelouse et sort les poubelles grâce à ses deux bras robotiques.
 
 ## Fonctionnalités
 
-- **Tonte automatique** : déplacement en zigzag avec détection des bords (capteurs ultrasons)
-- **Gestion des poubelles** : deux bras articulés avec pinces pour saisir et déplacer les poubelles
-- **Contrôle à distance** : interface web responsive accessible depuis smartphone ou PC
+- **Tonte automatique** : zigzag avec détection des bords, ou tonte GPS RTK dans une zone délimitée
+- **Gestion des poubelles** : deux bras articulés + trajet automatique cabanon ↔ bord de rue (GPS)
+- **Contrôle à distance sécurisé** : interface web (authentification), accessible via VPN
+- **Imitation par webcam** : le robot reproduit les mouvements de bras, mains et tête de l'opérateur (MediaPipe)
+- **Vision embarquée** : caméra montée sur la tête mobile (suit le regard)
 - **Modes de fonctionnement** :
-  - Manuel : joystick virtuel via l'interface web
-  - Auto-tonte : algorithme de couverture de zone
-  - Tâche bras : séquences programmées pour les poubelles
-- **Sécurité** : arrêt d'urgence, détection d'obstacles, watchdog de connexion
+  - Manuel : joystick virtuel / clavier
+  - Auto-tonte : zigzag ou couverture GPS
+  - Téléopération : imitation posture
+  - Autonome : tâches planifiées (tonte hebdo, poubelles)
+- **Sécurité sans surveillance** : détection personne/animal (coupe la lame), anti-soulèvement (IMU), pare-chocs
+- **Autonomie** : surveillance batterie + retour automatique à la base de recharge
+- **Supervision** : notifications courriel/SMS/webhook, capteur de pluie
+
+## Documentation
+
+| Sujet | Fichier |
+|-------|---------|
+| Câblage GPIO | [docs/wiring.md](docs/wiring.md) |
+| Assemblage mécanique | [docs/assembly.md](docs/assembly.md) |
+| Impression 3D | [3d-parts/IMPRESSION.md](3d-parts/IMPRESSION.md) |
+| Caméra Wyze | [docs/camera_wyze.md](docs/camera_wyze.md) |
+| Accès distant & VPN | [docs/remote_access.md](docs/remote_access.md) |
+| Sécurité sans surveillance | [docs/safety.md](docs/safety.md) |
+| Automatisation & notifications | [docs/automation.md](docs/automation.md) |
+| Batterie & retour base | [docs/battery.md](docs/battery.md) |
+| **Mise en service (checklist A→Z)** | [docs/mise_en_service.md](docs/mise_en_service.md) |
 
 ## Architecture matérielle
 
