@@ -55,7 +55,56 @@ const check = (label, actual, expected) => {
   check('Non-Règlem 30h + banque 5h — Y (total payé)', r2.Y, 35)
 }
 
-// Cas 6 : enchaînement de 52 semaines réalistes ne doit jamais planter
+// Cas 6 : Résidentiel Léger — jamais testé jusqu'ici, banque + retrait
+{
+  // Semaine A : 45h Léger travaillées, rien d'autre → banque 5h, payé 40h
+  const rA = computeWeek({ D: 0, I: 0, O: 45, U: 0, AD: 40 }, { L: 0, R: 0, X: 0 })
+  check('Résid. Léger 45h — P (mis en banque)', rA.P, 5)
+  check('Résid. Léger 45h — S (total payé)', rA.S, 40)
+  check('Résid. Léger 45h — R (solde)', rA.R, 5)
+
+  // Semaine B : 30h Léger, banque de 5h → complète à 35h (banque insuffisante pour 40)
+  const rB = computeWeek({ D: 0, I: 0, O: 30, U: 0, AD: 40 }, { L: 0, R: rA.R, X: 0 })
+  check('Résid. Léger 30h + banque 5h — Q (pris)', rB.Q, 5)
+  check('Résid. Léger 30h + banque 5h — S (total payé)', rB.S, 35)
+  check('Résid. Léger 30h + banque 5h — R (solde)', rB.R, 0)
+}
+
+// Cas 7 : vérification manuelle d'un enchaînement de 4 semaines, un seul
+// employé, une seule catégorie à la fois (usage réel typique), calculée à
+// la main puis comparée à l'engin — couvre l'effet cumulatif du solde de
+// banque Lourd sur plusieurs semaines consécutives.
+{
+  const AD = 40
+  // S1: 44h Lourd → banque +4, payé 40, solde 4
+  // S2: 36h Lourd, solde 4 → K=min(besoin 4, solde 4)=4, payé 40, solde 0
+  // S3: 38h Lourd, solde 0 → K=0 (rien en banque), payé 38 (pas 40 : pas assez travaillé ni de banque)
+  // S4: 50h Lourd → banque +10, payé 40, solde 10
+  const inputs = [
+    { date: '2027-01-02', D: 0, I: 44, O: 0, U: 0, AD },
+    { date: '2027-01-09', D: 0, I: 36, O: 0, U: 0, AD },
+    { date: '2027-01-16', D: 0, I: 38, O: 0, U: 0, AD },
+    { date: '2027-01-23', D: 0, I: 50, O: 0, U: 0, AD },
+  ]
+  const results = computeYear(inputs, { L: 0, R: 0, X: 0 })
+  check('4 semaines Lourd — S1 solde', results[0].L, 4)
+  check('4 semaines Lourd — S1 payé', results[0].M, 40)
+  check('4 semaines Lourd — S2 pris', results[1].K, 4)
+  check('4 semaines Lourd — S2 payé', results[1].M, 40)
+  check('4 semaines Lourd — S2 solde', results[1].L, 0)
+  check('4 semaines Lourd — S3 pris', results[2].K, 0)
+  check('4 semaines Lourd — S3 payé (pas de banque, 38h travaillées)', results[2].M, 38)
+  check('4 semaines Lourd — S4 banque +10', results[3].J, 10)
+  check('4 semaines Lourd — S4 payé', results[3].M, 40)
+  check('4 semaines Lourd — S4 solde final', results[3].L, 10)
+
+  // Total annuel : 44+36+38+50 = 168h travaillées sur ces 4 semaines
+  const totals = { D: 0, I: 44 + 36 + 38 + 50, O: 0, U: 0 }
+  const sumI = inputs.reduce((s, w) => s + w.I, 0)
+  check('4 semaines Lourd — total I travaillé', sumI, 168)
+}
+
+// Cas 8 : enchaînement de 52 semaines réalistes ne doit jamais planter
 {
   const dates = generateWeekDates(2027)
   check('generateWeekDates — 52 semaines', dates.length, 52)

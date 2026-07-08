@@ -88,24 +88,12 @@ export function computeYear(weeklyInputs, opening) {
 // TRAVAILLÉES" du classeur).
 export function yearTotals(weeks) {
   const sum = (key) => weeks.reduce((s, w) => s + (w[key] || 0), 0)
-  const commercial = sum('E') + sum('F') + sum('G')
-  const lourd = sum('I') + sum('J') + sum('K')
-  const leger = sum('O') + sum('P') + sum('Q')
-  const nonReglem = sum('U') + sum('V') + sum('W')
-  const zTotal = sum('Z')
-  const aaTotal = sum('AA')
-  const abTotal = sum('AB')
-  const denom = sum('K') + sum('Q') + sum('W') + zTotal + abTotal
   return {
-    D: sum('D'), E: sum('E'), G: sum('G'),
+    D: sum('D'), E: sum('E'), F: sum('F'), G: sum('G'),
     I: sum('I'), J: sum('J'), K: sum('K'), M: sum('M'),
     O: sum('O'), P: sum('P'), Q: sum('Q'), S: sum('S'),
     U: sum('U'), V: sum('V'), W: sum('W'), Y: sum('Y'),
-    Z: zTotal, AA: aaTotal, AB: abTotal,
-    pctCommercial: denom ? sum('E') / denom : 0,
-    pctLourd: sum('I') + sum('J') + sum('K'),
-    pctLeger: sum('O') + sum('P') + sum('Q'),
-    pctNonReglem: sum('U') + sum('V') + sum('W'),
+    Z: sum('Z'), AA: sum('AA'), AB: sum('AB'),
     heuresTravaillees: sum('D') + sum('I') + sum('O') + sum('U'),
   }
 }
