@@ -859,6 +859,34 @@ def page_invoice():
                 help="Code de l'activité de temps dans Sage 50 (ex: SERV, CONSULT, DEVEL).",
             )
 
+        sf1, sf2 = st.columns(2)
+        with sf1:
+            sage_sep = st.selectbox(
+                "Séparateur de colonnes",
+                ["Point-virgule (;) — Windows français", "Virgule (,) — standard"],
+                key="sage_sep",
+                help="Si Sage 50 met toutes les données dans une seule colonne au mapping, "
+                     "changez de séparateur.",
+            )
+        with sf2:
+            sage_datefmt = st.selectbox(
+                "Format de date",
+                ["AAAA-MM-JJ", "JJ/MM/AAAA", "MM/JJ/AAAA"],
+                key="sage_datefmt",
+                help="Doit correspondre au format de date configuré dans Sage 50 "
+                     "(Configuration → Paramètres → Dates).",
+            )
+
+        use_semicolon = sage_sep.startswith("Point-virgule")
+        sep = ";" if use_semicolon else ","
+        # Avec le point-virgule (locale française), les décimales utilisent la virgule
+        dec = "," if use_semicolon else "."
+        fmt_map = {"AAAA-MM-JJ": "%Y-%m-%d", "JJ/MM/AAAA": "%d/%m/%Y", "MM/JJ/AAAA": "%m/%d/%Y"}
+        date_fmt = fmt_map[sage_datefmt]
+
+        def _num(v: float) -> str:
+            return f"{v:.2f}".replace(".", dec)
+
         if st.button("⬇️ Télécharger CSV Sage 50", key="sage_export_btn"):
             rows = []
             for cname, clist in by_client.items():
@@ -866,20 +894,19 @@ def page_invoice():
                 for e in sorted(clist, key=lambda x: x.date):
                     montant = round(e.hours * cl.hourly_rate, 2)
                     rows.append({
-                        "Type":        "TEMPS",
-                        "Date":        e.date.strftime("%Y-%m-%d"),
+                        "Date":        e.date.strftime(date_fmt),
                         "Employé":     sage_employee,
                         "Client":      cname,
                         "Activité":    sage_activity,
-                        "Heures":      f"{e.hours:.2f}",
-                        "Taux":        f"{cl.hourly_rate:.2f}",
-                        "Montant":     f"{montant:.2f}",
+                        "Heures":      _num(e.hours),
+                        "Taux":        _num(cl.hourly_rate),
+                        "Montant":     _num(montant),
                         "Description": e.description or "",
                         "Facturable":  "Oui",
                     })
             if rows:
                 df_export = pd.DataFrame(rows)
-                csv_bytes = df_export.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+                csv_bytes = df_export.to_csv(index=False, sep=sep).encode("utf-8-sig")
                 fname = f"Sage50_Temps_{inv_date.strftime('%Y%m')}.csv"
                 st.download_button(
                     f"⬇️ {fname}",
