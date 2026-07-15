@@ -767,78 +767,13 @@ def page_invoice():
     with oc3:
         notes = st.text_area("Notes / conditions", height=68)
 
-    st.markdown("---")
-    st.markdown('<div class="section-hdr">Générer les factures</div>', unsafe_allow_html=True)
-
-    gen = InvoiceGenerator()
-
-    for cname, clist in by_client.items():
-        cl = config.get_client_by_name(cname)
-        total_h = sum(e.hours for e in clist)
-        total_m = total_h * cl.hourly_rate
-
-        row_l, row_r = st.columns([4, 1])
-        with row_l:
-            st.markdown(f"**{cname}** — {len(clist)} prestation(s) — {total_h:.1f} h — {total_m:.2f} {sym}")
-        with row_r:
-            if st.button("📄 PDF", key=f"gen_{cname}", type="primary", use_container_width=True):
-                if cl.hourly_rate == 0:
-                    st.warning(f"Taux horaire à 0 pour « {cname} ». Configurez-le dans **Clients**.")
-                else:
-                    inv_no = config.next_invoice_number(company)
-                    issue_dt = datetime.combine(inv_date, datetime.min.time())
-                    invoice = Invoice(
-                        invoice_number=inv_no, client=cl, company=company,
-                        entries=sorted(clist, key=lambda x: x.date),
-                        issue_date=issue_dt,
-                        due_date=issue_dt + timedelta(days=int(due_days)),
-                        notes=notes,
-                    )
-                    with st.spinner("Génération PDF…"):
-                        pdf = gen.generate_pdf(invoice)
-                    fname = f"Facture_{inv_no}_{cname.replace(' ', '_')}.pdf"
-                    st.download_button(
-                        f"⬇️ Télécharger {fname}", data=pdf, file_name=fname,
-                        mime="application/pdf", key=f"dl_{cname}",
-                    )
-                    st.success(f"Facture {inv_no} prête !")
-
-    if len(by_client) > 1:
-        st.markdown("---")
-        if st.button("📦 Générer toutes les factures (ZIP)", type="secondary"):
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for cname, clist in by_client.items():
-                    cl = config.get_client_by_name(cname)
-                    if cl.hourly_rate == 0:
-                        continue
-                    inv_no = config.next_invoice_number(company)
-                    issue_dt = datetime.combine(inv_date, datetime.min.time())
-                    invoice = Invoice(
-                        invoice_number=inv_no, client=cl, company=company,
-                        entries=sorted(clist, key=lambda x: x.date),
-                        issue_date=issue_dt,
-                        due_date=issue_dt + timedelta(days=int(due_days)),
-                        notes=notes,
-                    )
-                    pdf = gen.generate_pdf(invoice)
-                    zf.writestr(f"Facture_{inv_no}_{cname.replace(' ', '_')}.pdf", pdf)
-            zip_buf.seek(0)
-            st.download_button(
-                "⬇️ Télécharger le ZIP", data=zip_buf.getvalue(),
-                file_name=f"Factures_{inv_date.strftime('%Y%m')}.zip",
-                mime="application/zip", key="dl_zip",
-            )
-
-    # ── Export Sage 50 — Fiches de temps ─────────────────────────────
-    st.markdown("---")
-    with st.expander("📤 Exporter les fiches de temps vers Sage 50", expanded=False):
+    # ── Options d'export Sage 50 (utilisées par les boutons CSV) ─────
+    with st.expander("⚙️ Options d'export Sage 50 (CSV)", expanded=False):
         st.markdown(
             """
             <div class="step-box">
-            Génère un CSV importable dans Sage 50 Canada :<br/>
-            <b>Fichier → Importer/Exporter → Importer des activités de temps</b><br/>
-            Lors de l'import, Sage 50 vous permettra de faire correspondre les colonnes.
+            Le CSV se télécharge sous chaque facture PDF, puis s'importe dans Sage 50 Canada :<br/>
+            <b>Fichier → Importer/Exporter → Importer des activités de temps</b>
             </div>
             """,
             unsafe_allow_html=True,
@@ -877,47 +812,127 @@ def page_invoice():
                      "(Configuration → Paramètres → Dates).",
             )
 
-        use_semicolon = sage_sep.startswith("Point-virgule")
-        sep = ";" if use_semicolon else ","
-        # Avec le point-virgule (locale française), les décimales utilisent la virgule
-        dec = "," if use_semicolon else "."
-        fmt_map = {"AAAA-MM-JJ": "%Y-%m-%d", "JJ/MM/AAAA": "%d/%m/%Y", "MM/JJ/AAAA": "%m/%d/%Y"}
-        date_fmt = fmt_map[sage_datefmt]
+    use_semicolon = sage_sep.startswith("Point-virgule")
+    csv_sep = ";" if use_semicolon else ","
+    # Avec le point-virgule (locale française), les décimales utilisent la virgule
+    csv_dec = "," if use_semicolon else "."
+    fmt_map = {"AAAA-MM-JJ": "%Y-%m-%d", "JJ/MM/AAAA": "%d/%m/%Y", "MM/JJ/AAAA": "%m/%d/%Y"}
+    csv_date_fmt = fmt_map[sage_datefmt]
 
-        def _num(v: float) -> str:
-            return f"{v:.2f}".replace(".", dec)
+    def _num(v: float) -> str:
+        return f"{v:.2f}".replace(".", csv_dec)
 
-        if st.button("⬇️ Télécharger CSV Sage 50", key="sage_export_btn"):
-            rows = []
-            for cname, clist in by_client.items():
-                cl = config.get_client_by_name(cname)
-                for e in sorted(clist, key=lambda x: x.date):
-                    montant = round(e.hours * cl.hourly_rate, 2)
-                    rows.append({
-                        "Date":        e.date.strftime(date_fmt),
-                        "Employé":     sage_employee,
-                        "Client":      cname,
-                        "Activité":    sage_activity,
-                        "Heures":      _num(e.hours),
-                        "Taux":        _num(cl.hourly_rate),
-                        "Montant":     _num(montant),
-                        "Description": e.description or "",
-                        "Facturable":  "Oui",
-                    })
-            if rows:
-                df_export = pd.DataFrame(rows)
-                csv_bytes = df_export.to_csv(index=False, sep=sep).encode("utf-8-sig")
-                fname = f"Sage50_Temps_{inv_date.strftime('%Y%m')}.csv"
+    def sage_csv_bytes(client_entries: Dict[str, List[TimeEntry]]) -> bytes:
+        rows = []
+        for c_name, c_list in client_entries.items():
+            c_cl = config.get_client_by_name(c_name)
+            for e in sorted(c_list, key=lambda x: x.date):
+                montant = round(e.hours * c_cl.hourly_rate, 2)
+                rows.append({
+                    "Date":        e.date.strftime(csv_date_fmt),
+                    "Employé":     sage_employee,
+                    "Client":      c_name,
+                    "Activité":    sage_activity,
+                    "Heures":      _num(e.hours),
+                    "Taux":        _num(c_cl.hourly_rate),
+                    "Montant":     _num(montant),
+                    "Description": e.description or "",
+                    "Facturable":  "Oui",
+                })
+        return pd.DataFrame(rows).to_csv(index=False, sep=csv_sep).encode("utf-8-sig")
+
+    st.markdown("---")
+    st.markdown('<div class="section-hdr">Générer les factures</div>', unsafe_allow_html=True)
+
+    gen = InvoiceGenerator()
+
+    for cname, clist in by_client.items():
+        cl = config.get_client_by_name(cname)
+        total_h = sum(e.hours for e in clist)
+        total_m = total_h * cl.hourly_rate
+
+        row_l, row_r = st.columns([4, 1])
+        with row_l:
+            st.markdown(f"**{cname}** — {len(clist)} prestation(s) — {total_h:.1f} h — {total_m:.2f} {sym}")
+        with row_r:
+            if st.button("📄 PDF", key=f"gen_{cname}", type="primary", use_container_width=True):
+                if cl.hourly_rate == 0:
+                    st.warning(f"Taux horaire à 0 pour « {cname} ». Configurez-le dans **Clients**.")
+                else:
+                    inv_no = config.next_invoice_number(company)
+                    issue_dt = datetime.combine(inv_date, datetime.min.time())
+                    invoice = Invoice(
+                        invoice_number=inv_no, client=cl, company=company,
+                        entries=sorted(clist, key=lambda x: x.date),
+                        issue_date=issue_dt,
+                        due_date=issue_dt + timedelta(days=int(due_days)),
+                        notes=notes,
+                    )
+                    with st.spinner("Génération PDF…"):
+                        pdf = gen.generate_pdf(invoice)
+                    st.session_state[f"generated_{cname}"] = {
+                        "pdf": pdf,
+                        "inv_no": inv_no,
+                    }
+
+        if f"generated_{cname}" in st.session_state:
+            gen_data = st.session_state[f"generated_{cname}"]
+            inv_no = gen_data["inv_no"]
+            fname = f"Facture_{inv_no}_{cname.replace(' ', '_')}.pdf"
+            dl_pdf, dl_csv = st.columns(2)
+            with dl_pdf:
                 st.download_button(
-                    f"⬇️ {fname}",
-                    data=csv_bytes,
-                    file_name=fname,
-                    mime="text/csv",
-                    key="dl_sage50",
+                    f"⬇️ PDF — {fname}", data=gen_data["pdf"], file_name=fname,
+                    mime="application/pdf", key=f"dl_{cname}",
+                    use_container_width=True,
                 )
-                st.dataframe(df_export, use_container_width=True, hide_index=True)
-            else:
-                st.warning("Aucune entrée à exporter.")
+            with dl_csv:
+                csv_fname = f"Sage50_Temps_{inv_no}_{cname.replace(' ', '_')}.csv"
+                st.download_button(
+                    f"⬇️ CSV Sage 50 — {csv_fname}",
+                    data=sage_csv_bytes({cname: clist}),
+                    file_name=csv_fname,
+                    mime="text/csv",
+                    key=f"dl_csv_{cname}",
+                    use_container_width=True,
+                )
+
+    if len(by_client) > 1:
+        st.markdown("---")
+        if st.button("📦 Générer toutes les factures (ZIP)", type="secondary"):
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for cname, clist in by_client.items():
+                    cl = config.get_client_by_name(cname)
+                    if cl.hourly_rate == 0:
+                        continue
+                    inv_no = config.next_invoice_number(company)
+                    issue_dt = datetime.combine(inv_date, datetime.min.time())
+                    invoice = Invoice(
+                        invoice_number=inv_no, client=cl, company=company,
+                        entries=sorted(clist, key=lambda x: x.date),
+                        issue_date=issue_dt,
+                        due_date=issue_dt + timedelta(days=int(due_days)),
+                        notes=notes,
+                    )
+                    pdf = gen.generate_pdf(invoice)
+                    zf.writestr(f"Facture_{inv_no}_{cname.replace(' ', '_')}.pdf", pdf)
+            zip_buf.seek(0)
+            st.download_button(
+                "⬇️ Télécharger le ZIP", data=zip_buf.getvalue(),
+                file_name=f"Factures_{inv_date.strftime('%Y%m')}.zip",
+                mime="application/zip", key="dl_zip",
+            )
+
+    # ── Export Sage 50 global (tous les clients) ─────────────────────
+    st.markdown("---")
+    st.download_button(
+        "📤 CSV Sage 50 — tous les clients",
+        data=sage_csv_bytes(by_client),
+        file_name=f"Sage50_Temps_{inv_date.strftime('%Y%m')}.csv",
+        mime="text/csv",
+        key="dl_sage50_all",
+    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
