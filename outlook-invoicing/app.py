@@ -20,7 +20,7 @@ import streamlit as st
 from config_manager import ConfigManager
 from ics_parser import fetch_ics_url, parse_ics_bytes
 from invoice_generator import InvoiceGenerator
-from models import Client, CompanyInfo, Invoice, TimeEntry
+from models import Client, CompanyInfo, Invoice, InvoiceRecord, TimeEntry
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -156,10 +156,12 @@ def sidebar():
         st.markdown("---")
 
         nav = {
-            "calendar": "📅 Calendrier",
-            "clients":  "👥 Clients",
-            "invoice":  "📄 Facturation",
-            "settings": "⚙️ Paramètres",
+            "dashboard": "📊 Tableau de bord",
+            "calendar":  "📅 Calendrier",
+            "clients":   "👥 Clients",
+            "invoice":   "📄 Facturation",
+            "history":   "🧾 Factures",
+            "settings":  "⚙️ Paramètres",
         }
         for key, label in nav.items():
             kind = "primary" if st.session_state.page == key else "secondary"
@@ -379,8 +381,19 @@ def page_calendar():
                         e.client_name = default_client
 
                 st.session_state.time_entries = filtered
-                st.session_state.selected_ids = {e.event_id for e in filtered}
+
+                # Anti-double facturation : décocher les événements déjà facturés
+                billed = get_config().get_billed_event_ids()
+                already = [e for e in filtered if e.event_id in billed]
+                st.session_state.selected_ids = {
+                    e.event_id for e in filtered if e.event_id not in billed
+                }
                 st.success(f"{len(filtered)} événement(s) importé(s) sur {len(raw_entries)} total")
+                if already:
+                    st.warning(
+                        f"⚠️ {len(already)} événement(s) déjà présents sur une facture émise "
+                        "ont été décochés automatiquement (voir colonne « Déjà facturé »)."
+                    )
             except Exception as exc:
                 st.error(f"Erreur d'import : {exc}")
 
@@ -455,6 +468,7 @@ def page_calendar():
                 st.rerun()
 
     client_options = known_names if known_names else None
+    billed_ids = get_config().get_billed_event_ids()
     edited = st.data_editor(
         pd.DataFrame([
             {
@@ -464,6 +478,7 @@ def page_calendar():
                 "Client": e.client_name,
                 "Description": e.description,
                 "Heures": e.hours,
+                "Déjà facturé": "⚠️ Oui" if e.event_id in billed_ids else "",
                 "_id": e.event_id,
             }
             for e in entries
@@ -483,7 +498,9 @@ def page_calendar():
             "Heures": st.column_config.NumberColumn(
                 "Heures", min_value=0.0, max_value=24.0, step=0.25, width=80
             ),
+            "Déjà facturé": st.column_config.TextColumn("Déjà facturé", width=100),
         },
+        disabled=["Déjà facturé"],
         num_rows="fixed",
         key="entries_editor",
     )
@@ -845,6 +862,29 @@ def page_invoice():
     st.markdown('<div class="section-hdr">Générer les factures</div>', unsafe_allow_html=True)
 
     gen = InvoiceGenerator()
+    logo = config.get_logo()
+
+    def record_invoice(invoice: Invoice):
+        config.add_invoice(InvoiceRecord(
+            invoice_number=invoice.invoice_number,
+            client_name=invoice.client.name,
+            issue_date=invoice.issue_date.date().isoformat(),
+            due_date=invoice.due_date.date().isoformat(),
+            subtotal=round(invoice.subtotal, 2),
+            tps=round(invoice.tps_amount, 2),
+            tvq=round(invoice.tvq_amount, 2),
+            total=round(invoice.total, 2),
+            hours=round(invoice.total_hours, 2),
+            notes=invoice.notes,
+            event_ids=[e.event_id for e in invoice.entries],
+            entries=[
+                {"date": e.date.isoformat(), "description": e.description,
+                 "hours": e.hours, "event_id": e.event_id}
+                for e in invoice.entries
+            ],
+            client=invoice.client.to_dict(),
+            company=invoice.company.to_dict(),
+        ))
 
     for cname, clist in by_client.items():
         cl = config.get_client_by_name(cname)
@@ -859,7 +899,7 @@ def page_invoice():
                 if cl.hourly_rate == 0:
                     st.warning(f"Taux horaire à 0 pour « {cname} ». Configurez-le dans **Clients**.")
                 else:
-                    inv_no = config.next_invoice_number(company)
+                    inv_no = config.next_invoice_number(company, year=inv_date.year)
                     issue_dt = datetime.combine(inv_date, datetime.min.time())
                     invoice = Invoice(
                         invoice_number=inv_no, client=cl, company=company,
@@ -869,7 +909,8 @@ def page_invoice():
                         notes=notes,
                     )
                     with st.spinner("Génération PDF…"):
-                        pdf = gen.generate_pdf(invoice)
+                        pdf = gen.generate_pdf(invoice, logo=logo)
+                    record_invoice(invoice)
                     st.session_state[f"generated_{cname}"] = {
                         "pdf": pdf,
                         "inv_no": inv_no,
@@ -906,7 +947,7 @@ def page_invoice():
                     cl = config.get_client_by_name(cname)
                     if cl.hourly_rate == 0:
                         continue
-                    inv_no = config.next_invoice_number(company)
+                    inv_no = config.next_invoice_number(company, year=inv_date.year)
                     issue_dt = datetime.combine(inv_date, datetime.min.time())
                     invoice = Invoice(
                         invoice_number=inv_no, client=cl, company=company,
@@ -915,7 +956,8 @@ def page_invoice():
                         due_date=issue_dt + timedelta(days=int(due_days)),
                         notes=notes,
                     )
-                    pdf = gen.generate_pdf(invoice)
+                    pdf = gen.generate_pdf(invoice, logo=logo)
+                    record_invoice(invoice)
                     zf.writestr(f"Facture_{inv_no}_{cname.replace(' ', '_')}.pdf", pdf)
             zip_buf.seek(0)
             st.download_button(
@@ -932,6 +974,221 @@ def page_invoice():
         file_name=f"Sage50_Temps_{inv_date.strftime('%Y%m')}.csv",
         mime="text/csv",
         key="dl_sage50_all",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Page: Factures (historique)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def page_history():
+    st.markdown('<div class="main-title">🧾 Factures émises</div>', unsafe_allow_html=True)
+    config = get_config()
+    records = config.get_invoices()
+
+    if not records:
+        st.info("Aucune facture émise pour l'instant. Générez-en une dans **Facturation**.")
+        return
+
+    # Tri : plus récentes en premier
+    records_sorted = sorted(records, key=lambda r: (r.issue_date, r.invoice_number), reverse=True)
+
+    pending = [r for r in records if r.display_status == "En attente"]
+    overdue = [r for r in records if r.display_status == "En retard"]
+    paid    = [r for r in records if r.status == "Payée"]
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Factures émises", len(records))
+    m2.metric("En attente", f"{sum(r.total for r in pending):,.2f} $")
+    m3.metric("En retard", f"{sum(r.total for r in overdue):,.2f} $",
+              delta=f"{len(overdue)} facture(s)" if overdue else None,
+              delta_color="inverse")
+    m4.metric("Payées", f"{sum(r.total for r in paid):,.2f} $")
+
+    status_filter = st.radio(
+        "Filtrer",
+        ["Toutes", "En attente", "En retard", "Payée"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    if status_filter != "Toutes":
+        records_sorted = [r for r in records_sorted if r.display_status == status_filter]
+
+    gen = InvoiceGenerator()
+    logo = config.get_logo()
+    badge = {"Payée": "✅", "En attente": "🕓", "En retard": "🔴"}
+
+    for rec in records_sorted:
+        title = (f"{badge[rec.display_status]} **{rec.invoice_number}** — {rec.client_name} — "
+                 f"{rec.total:,.2f} $ — émise le {rec.issue_date}")
+        with st.expander(title):
+            d1, d2, d3, d4 = st.columns(4)
+            d1.markdown(f"**Sous-total** : {rec.subtotal:,.2f} $")
+            d2.markdown(f"**TPS** : {rec.tps:,.2f} $")
+            d3.markdown(f"**TVQ** : {rec.tvq:,.2f} $")
+            d4.markdown(f"**Heures** : {rec.hours:.2f} h")
+            st.caption(f"Échéance : {rec.due_date}")
+
+            if rec.entries:
+                st.dataframe(
+                    pd.DataFrame([
+                        {"Date": e["date"][:10], "Description": e.get("description", ""),
+                         "Heures": e.get("hours", 0)}
+                        for e in rec.entries
+                    ]),
+                    use_container_width=True, hide_index=True,
+                )
+
+            a1, a2 = st.columns(2)
+            with a1:
+                new_status = st.selectbox(
+                    "Statut",
+                    ["En attente", "Payée"],
+                    index=0 if rec.status != "Payée" else 1,
+                    key=f"status_{rec.invoice_number}",
+                )
+                if new_status != rec.status:
+                    for r in records:
+                        if r.invoice_number == rec.invoice_number:
+                            r.status = new_status
+                    config.save_invoices(records)
+                    st.rerun()
+            with a2:
+                st.markdown("<div style='margin-top:1.65rem'></div>", unsafe_allow_html=True)
+                try:
+                    pdf = gen.generate_pdf(rec.to_invoice(), logo=logo)
+                    st.download_button(
+                        "⬇️ Re-télécharger le PDF",
+                        data=pdf,
+                        file_name=f"Facture_{rec.invoice_number}_{rec.client_name.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        key=f"redl_{rec.invoice_number}",
+                        use_container_width=True,
+                    )
+                except Exception as exc:
+                    st.error(f"Impossible de régénérer le PDF : {exc}")
+
+    st.markdown("---")
+    with st.expander("🗑️ Supprimer une facture de l'historique"):
+        st.caption(
+            "Retire la facture de l'historique et libère ses événements "
+            "pour une nouvelle facturation. Ne supprime pas le PDF déjà téléchargé."
+        )
+        nums = [r.invoice_number for r in records_sorted]
+        if nums:
+            to_del = st.selectbox("Facture", nums, key="del_invoice_sel")
+            if st.button("Supprimer définitivement", type="secondary", key="del_invoice_btn"):
+                config.save_invoices([r for r in records if r.invoice_number != to_del])
+                st.success(f"Facture {to_del} supprimée de l'historique.")
+                st.rerun()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Page: Tableau de bord
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def page_dashboard():
+    st.markdown('<div class="main-title">📊 Tableau de bord</div>', unsafe_allow_html=True)
+    config = get_config()
+    records = config.get_invoices()
+
+    if not records:
+        st.info(
+            "Le tableau de bord se remplit à mesure que vous émettez des factures. "
+            "Commencez par importer un calendrier puis générez une facture."
+        )
+        return
+
+    df = pd.DataFrame([{
+        "Numéro":  r.invoice_number,
+        "Client":  r.client_name,
+        "Date":    pd.to_datetime(r.issue_date),
+        "Heures":  r.hours,
+        "Sous-total": r.subtotal,
+        "TPS":     r.tps,
+        "TVQ":     r.tvq,
+        "Total":   r.total,
+        "Statut":  r.display_status,
+    } for r in records])
+
+    years = sorted(df["Date"].dt.year.unique(), reverse=True)
+    year = st.selectbox("Année", years, index=0)
+    dfy = df[df["Date"].dt.year == year].copy()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(f"Revenus {year}", f"{dfy['Sous-total'].sum():,.2f} $")
+    m2.metric("Heures facturées", f"{dfy['Heures'].sum():,.1f} h")
+    m3.metric("TPS facturée", f"{dfy['TPS'].sum():,.2f} $")
+    m4.metric("TVQ facturée", f"{dfy['TVQ'].sum():,.2f} $")
+    st.caption(
+        "Montants basés sur les factures émises (payées ou non). "
+        "TPS/TVQ facturées = à remettre selon votre méthode de déclaration."
+    )
+
+    import altair as alt
+
+    # ── Revenus par mois (barres, une seule teinte) ──────────────────
+    st.markdown('<div class="section-hdr">Revenus par mois</div>', unsafe_allow_html=True)
+    monthly = (
+        dfy.assign(Mois=dfy["Date"].dt.strftime("%Y-%m"))
+        .groupby("Mois", as_index=False)
+        .agg({"Sous-total": "sum", "Heures": "sum"})
+    )
+    chart_m = (
+        alt.Chart(monthly)
+        .mark_bar(color="#2e7bcf", cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=28)
+        .encode(
+            x=alt.X("Mois:O", title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("Sous-total:Q", title="Revenus ($)"),
+            tooltip=[
+                alt.Tooltip("Mois:O", title="Mois"),
+                alt.Tooltip("Sous-total:Q", title="Revenus ($)", format=",.2f"),
+                alt.Tooltip("Heures:Q", title="Heures", format=".1f"),
+            ],
+        )
+        .properties(height=260)
+    )
+    st.altair_chart(chart_m, use_container_width=True)
+
+    # ── Revenus par client (barres horizontales) ─────────────────────
+    st.markdown('<div class="section-hdr">Revenus par client</div>', unsafe_allow_html=True)
+    by_cl = (
+        dfy.groupby("Client", as_index=False)
+        .agg({"Sous-total": "sum", "Heures": "sum"})
+        .sort_values("Sous-total", ascending=False)
+    )
+    chart_c = (
+        alt.Chart(by_cl)
+        .mark_bar(color="#2e7bcf", cornerRadiusTopRight=4, cornerRadiusBottomRight=4, size=22)
+        .encode(
+            y=alt.Y("Client:N", sort="-x", title=None),
+            x=alt.X("Sous-total:Q", title="Revenus ($)"),
+            tooltip=[
+                alt.Tooltip("Client:N"),
+                alt.Tooltip("Sous-total:Q", title="Revenus ($)", format=",.2f"),
+                alt.Tooltip("Heures:Q", title="Heures", format=".1f"),
+            ],
+        )
+        .properties(height=max(120, 40 * len(by_cl)))
+    )
+    st.altair_chart(chart_c, use_container_width=True)
+
+    # ── Détail ────────────────────────────────────────────────────────
+    st.markdown('<div class="section-hdr">Détail des factures</div>', unsafe_allow_html=True)
+    st.dataframe(
+        dfy.sort_values("Date", ascending=False).assign(
+            Date=dfy["Date"].dt.strftime("%Y-%m-%d")
+        ),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Sous-total": st.column_config.NumberColumn(format="%.2f $"),
+            "TPS":        st.column_config.NumberColumn(format="%.2f $"),
+            "TVQ":        st.column_config.NumberColumn(format="%.2f $"),
+            "Total":      st.column_config.NumberColumn(format="%.2f $"),
+        },
     )
 
 
@@ -1016,6 +1273,64 @@ def page_settings():
             st.success("Paramètres enregistrés !")
             st.rerun()
 
+    # ── Logo d'entreprise ─────────────────────────────────────────────
+    st.markdown('<div class="section-hdr">Logo d\'entreprise</div>', unsafe_allow_html=True)
+    logo = config.get_logo()
+    lg1, lg2 = st.columns([2, 1])
+    with lg1:
+        logo_file = st.file_uploader(
+            "Logo (PNG ou JPG) — affiché en haut à gauche de la facture",
+            type=["png", "jpg", "jpeg"],
+            key="logo_upload",
+        )
+        if logo_file is not None:
+            data = logo_file.read()
+            if len(data) > 2_000_000:
+                st.error("Fichier trop lourd (max 2 Mo).")
+            else:
+                config.save_logo(data)
+                st.success("Logo enregistré !")
+                st.rerun()
+    with lg2:
+        if logo:
+            st.image(logo, caption="Logo actuel", width=180)
+            if st.button("🗑️ Retirer le logo"):
+                config.save_logo(None)
+                st.rerun()
+        else:
+            st.caption("Aucun logo configuré.")
+
+    # ── Sauvegarde / restauration ─────────────────────────────────────
+    st.markdown('<div class="section-hdr">Sauvegarde de la configuration</div>', unsafe_allow_html=True)
+    st.caption(
+        "La configuration (entreprise, clients, historique des factures, logo) est stockée "
+        "dans un fichier local. Sur Streamlit Cloud, ce fichier est effacé à chaque "
+        "redéploiement — exportez une sauvegarde régulièrement."
+    )
+    bk1, bk2 = st.columns(2)
+    with bk1:
+        st.download_button(
+            "⬇️ Exporter la configuration",
+            data=config.export_json().encode("utf-8"),
+            file_name=f"facturation_sauvegarde_{date.today().isoformat()}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+    with bk2:
+        backup_file = st.file_uploader(
+            "Restaurer une sauvegarde (.json)",
+            type=["json"],
+            key="backup_upload",
+            label_visibility="collapsed",
+        )
+        if backup_file is not None:
+            try:
+                config.import_json(backup_file.read().decode("utf-8"))
+                st.success("Configuration restaurée !")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Restauration impossible : {exc}")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Main
@@ -1025,10 +1340,12 @@ def page_settings():
 def main():
     sidebar()
     dispatch = {
-        "calendar": page_calendar,
-        "clients":  page_clients,
-        "invoice":  page_invoice,
-        "settings": page_settings,
+        "dashboard": page_dashboard,
+        "calendar":  page_calendar,
+        "clients":   page_clients,
+        "invoice":   page_invoice,
+        "history":   page_history,
+        "settings":  page_settings,
     }
     dispatch.get(st.session_state.page, page_calendar)()
 

@@ -6,8 +6,10 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import letter  # Format lettre (standard Québec/Canada)
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     HRFlowable,
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -29,7 +31,7 @@ MARGIN = 2 * cm
 
 
 class InvoiceGenerator:
-    def generate_pdf(self, invoice: Invoice) -> bytes:
+    def generate_pdf(self, invoice: Invoice, logo: bytes = None) -> bytes:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer,
@@ -40,7 +42,7 @@ class InvoiceGenerator:
             bottomMargin=MARGIN,
         )
         styles = getSampleStyleSheet()
-        story = self._build_story(invoice, styles)
+        story = self._build_story(invoice, styles, logo=logo)
         doc.build(
             story,
             onFirstPage=self._draw_chrome,
@@ -70,7 +72,7 @@ class InvoiceGenerator:
     # Contenu
     # ------------------------------------------------------------------
 
-    def _build_story(self, invoice: Invoice, styles):
+    def _build_story(self, invoice: Invoice, styles, logo: bytes = None):
         company = invoice.company
         client  = invoice.client
         sym     = company.currency_symbol or "$"
@@ -105,12 +107,17 @@ class InvoiceGenerator:
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ]))
 
+        left_cell = []
+        if logo:
+            img_flowable = self._logo_flowable(logo)
+            if img_flowable:
+                left_cell.append(img_flowable)
+                left_cell.append(Spacer(1, 2 * mm))
+        left_cell.append(Paragraph(company.name or "Mon Entreprise", s_co_name))
+        left_cell.append(Paragraph(co_block, s_small))
+
         hdr = Table(
-            [[
-                [Paragraph(company.name or "Mon Entreprise", s_co_name),
-                 Paragraph(co_block, s_small)],
-                right_hdr,
-            ]],
+            [[left_cell, right_hdr]],
             colWidths=["55%", "45%"],
         )
         hdr.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -271,6 +278,19 @@ class InvoiceGenerator:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _logo_flowable(self, logo: bytes):
+        """Image du logo, largeur max 45 mm / hauteur max 20 mm, ratio préservé."""
+        try:
+            reader = ImageReader(io.BytesIO(logo))
+            iw, ih = reader.getSize()
+            if iw <= 0 or ih <= 0:
+                return None
+            max_w, max_h = 45 * mm, 20 * mm
+            scale = min(max_w / iw, max_h / ih)
+            return Image(io.BytesIO(logo), width=iw * scale, height=ih * scale)
+        except Exception:
+            return None
 
     def _company_block(self, company) -> str:
         parts = []

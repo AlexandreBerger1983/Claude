@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List
 
@@ -140,3 +140,68 @@ class Invoice:
     @property
     def total_hours(self) -> float:
         return sum(e.hours for e in self.entries)
+
+
+@dataclass
+class InvoiceRecord:
+    """Facture émise, conservée dans l'historique (config JSON)."""
+    invoice_number: str
+    client_name: str
+    issue_date: str            # ISO "2026-07-15"
+    due_date: str
+    subtotal: float = 0.0
+    tps: float = 0.0
+    tvq: float = 0.0
+    total: float = 0.0
+    hours: float = 0.0
+    status: str = "En attente"  # "En attente" | "Payée"
+    notes: str = ""
+    event_ids: List[str] = field(default_factory=list)
+    # Instantanés au moment de l'émission (pour régénérer le PDF à l'identique)
+    entries: List[dict] = field(default_factory=list)   # {date, description, hours}
+    client: dict = field(default_factory=dict)
+    company: dict = field(default_factory=dict)
+
+    def to_dict(self) -> dict:
+        return self.__dict__.copy()
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "InvoiceRecord":
+        valid = {k: v for k, v in d.items() if k in cls.__dataclass_fields__}
+        return cls(**valid)
+
+    @property
+    def is_overdue(self) -> bool:
+        if self.status == "Payée":
+            return False
+        try:
+            return datetime.fromisoformat(self.due_date).date() < datetime.now().date()
+        except ValueError:
+            return False
+
+    @property
+    def display_status(self) -> str:
+        if self.status == "Payée":
+            return "Payée"
+        return "En retard" if self.is_overdue else "En attente"
+
+    def to_invoice(self) -> Invoice:
+        """Reconstruit un objet Invoice depuis les instantanés (pour re-générer le PDF)."""
+        return Invoice(
+            invoice_number=self.invoice_number,
+            client=Client.from_dict(self.client),
+            company=CompanyInfo.from_dict(self.company),
+            entries=[
+                TimeEntry(
+                    date=datetime.fromisoformat(e["date"]),
+                    description=e.get("description", ""),
+                    hours=float(e.get("hours", 0)),
+                    client_name=self.client_name,
+                    event_id=e.get("event_id", ""),
+                )
+                for e in self.entries
+            ],
+            issue_date=datetime.fromisoformat(self.issue_date),
+            due_date=datetime.fromisoformat(self.due_date),
+            notes=self.notes,
+        )
