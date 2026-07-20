@@ -111,11 +111,19 @@ async function demarrerCamera() {
       etatChargement.textContent = 'Chargement du modèle de détection…';
       const vision = await import(`${BASE_MEDIAPIPE}/vision_bundle.mjs`);
       const fileset = await vision.FilesetResolver.forVisionTasks(`${BASE_MEDIAPIPE}/wasm`);
-      landmarker = await vision.PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: URL_MODELE, delegate: 'GPU' },
+      const options = (delegate) => ({
+        baseOptions: { modelAssetPath: URL_MODELE, delegate },
         runningMode: 'VIDEO',
         numPoses: 1,
       });
+      // GPU d'abord ; repli sur le CPU si le délégué GPU échoue
+      // (certaines versions de Safari iOS / navigateurs anciens).
+      try {
+        landmarker = await vision.PoseLandmarker.createFromOptions(fileset, options('GPU'));
+      } catch (errGpu) {
+        console.warn('Délégué GPU indisponible, repli sur le CPU.', errGpu);
+        landmarker = await vision.PoseLandmarker.createFromOptions(fileset, options('CPU'));
+      }
     }
     etatChargement.textContent = 'Ouverture de la caméra…';
     if (fluxCamera) fluxCamera.getTracks().forEach((t) => t.stop());
