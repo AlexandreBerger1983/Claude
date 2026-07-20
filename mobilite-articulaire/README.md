@@ -57,6 +57,26 @@ Dernier résultat et record par test et par côté, conservés sur l'appareil
 (`localStorage`), avec jauge comparant la mesure à l'amplitude de référence et
 récapitulatif des **mouvements à travailler**.
 
+## Sur iPhone (et Android)
+
+La caméra n'est autorisée que sur une adresse **HTTPS**. Il faut donc publier
+l'appli sur un lien sécurisé, puis l'ajouter à l'écran d'accueil.
+
+**1. Publier (une seule fois)** — le plus simple, le code étant déjà sur GitHub :
+active *GitHub Pages* dans le dépôt (`Settings` → `Pages` → *Deploy from a
+branch* → branche voulue + dossier `/ (root)`). L'appli est alors accessible à
+`https://<utilisateur>.github.io/Claude/mobilite-articulaire/`.
+Alternative sans configuration : déposer le dossier `mobilite-articulaire/` sur
+<https://app.netlify.com/drop>, qui renvoie un lien HTTPS immédiat.
+
+**2. Installer sur l'iPhone** — ouvrir ce lien dans **Safari**, toucher le
+bouton *Partager* → **« Sur l'écran d'accueil »**. Une icône apparaît comme
+pour une vraie app ; à la première ouverture, autoriser la caméra.
+
+Nécessite **iOS 16.4 ou plus récent** (pour le moteur de détection). Calez le
+téléphone pour être visible en entier ; la face avant sert pour se filmer
+soi-même, sinon utilisez « Changer de caméra ».
+
 ## Usage hors-ligne (optionnel)
 
 Par défaut la bibliothèque et le modèle sont chargés depuis Internet. Pour un
