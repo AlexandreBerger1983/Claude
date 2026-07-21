@@ -784,13 +784,15 @@ def page_invoice():
     with oc3:
         notes = st.text_area("Notes / conditions", height=68)
 
-    # ── Options d'export Sage 50 (utilisées par les boutons CSV) ─────
-    with st.expander("⚙️ Options d'export Sage 50 (CSV)", expanded=False):
+    # ── Options d'export Sage 50 (feuille de temps) ─────────────────
+    with st.expander("⚙️ Options d'export Sage 50 (feuille de temps)", expanded=False):
         st.markdown(
             """
             <div class="step-box">
-            Le CSV se télécharge sous chaque facture PDF, puis s'importe dans Sage 50 Canada :<br/>
-            <b>Fichier → Importer/Exporter → Importer des activités de temps</b>
+            Format conforme au <b>gabarit d'importation officiel de Sage 50 Canada</b> —
+            colonnes <i>Nom, Date, Revenu, Heures, Pièces, Montant, Projet, Commentaire</i>.<br/>
+            Import dans Sage 50 : <b>Fichier → Importer/Exporter → Importer des enregistrements
+            → Feuille de temps</b>.
             </div>
             """,
             unsafe_allow_html=True,
@@ -798,65 +800,71 @@ def page_invoice():
         se1, se2 = st.columns(2)
         with se1:
             sage_employee = st.text_input(
-                "Nom de l'employé / consultant",
+                "Nom de l'employé (colonne « Nom »)",
                 value=company.name,
                 key="sage_emp",
-                help="Doit correspondre exactement au nom dans Sage 50.",
+                help="Doit correspondre EXACTEMENT au nom de l'employé dans Sage 50 "
+                     "(ex. « Julie Dupré » ou « Dupré, Julie »).",
             )
         with se2:
-            sage_activity = st.text_input(
-                "Code d'activité Sage 50",
-                value="SERV",
-                key="sage_act",
-                help="Code de l'activité de temps dans Sage 50 (ex: SERV, CONSULT, DEVEL).",
+            sage_revenu = st.text_input(
+                "Type de revenu (colonne « Revenu »)",
+                value="Salaire de base",
+                key="sage_revenu",
+                help="Nom exact du revenu configuré dans Sage 50 "
+                     "(ex. « Salaire de base », « Heures supplémentaires 1 »).",
             )
 
         sf1, sf2 = st.columns(2)
         with sf1:
-            sage_sep = st.selectbox(
-                "Séparateur de colonnes",
-                ["Point-virgule (;) — Windows français", "Virgule (,) — standard"],
-                key="sage_sep",
-                help="Si Sage 50 met toutes les données dans une seule colonne au mapping, "
-                     "changez de séparateur.",
-            )
-        with sf2:
             sage_datefmt = st.selectbox(
                 "Format de date",
-                ["AAAA-MM-JJ", "JJ/MM/AAAA", "MM/JJ/AAAA"],
+                ["AAAA-MM-JJ", "MM-JJ-AAAA", "JJ-MM-AAAA",
+                 "AAAA/MM/JJ", "MM/JJ/AAAA", "JJ/MM/AAAA"],
                 key="sage_datefmt",
-                help="Doit correspondre au format de date configuré dans Sage 50 "
-                     "(Configuration → Paramètres → Dates).",
+                help="Doit correspondre au format de date de votre Sage 50 (formats acceptés "
+                     "par le gabarit).",
+            )
+        with sf2:
+            sage_projet = st.checkbox(
+                "Mettre le client dans « Projet »",
+                value=True,
+                key="sage_projet",
+                help="Inscrit le nom du client dans la colonne Projet "
+                     "(ventilation par projet dans Sage 50).",
             )
 
-    use_semicolon = sage_sep.startswith("Point-virgule")
-    csv_sep = ";" if use_semicolon else ","
-    # Avec le point-virgule (locale française), les décimales utilisent la virgule
-    csv_dec = "," if use_semicolon else "."
-    fmt_map = {"AAAA-MM-JJ": "%Y-%m-%d", "JJ/MM/AAAA": "%d/%m/%Y", "MM/JJ/AAAA": "%m/%d/%Y"}
+    fmt_map = {
+        "AAAA-MM-JJ": "%Y-%m-%d", "MM-JJ-AAAA": "%m-%d-%Y", "JJ-MM-AAAA": "%d-%m-%Y",
+        "AAAA/MM/JJ": "%Y/%m/%d", "MM/JJ/AAAA": "%m/%d/%Y", "JJ/MM/AAAA": "%d/%m/%Y",
+    }
     csv_date_fmt = fmt_map[sage_datefmt]
 
-    def _num(v: float) -> str:
-        return f"{v:.2f}".replace(".", csv_dec)
+    # Colonnes exactes du gabarit officiel Sage 50 (feuille de temps)
+    SAGE_COLS = ["Nom", "Date", "Revenu", "Heures", "Pièces", "Montant", "Projet", "Commentaire"]
+
+    def _hours(v: float) -> str:
+        # Décimales avec virgule (ex. 3,50), comme dans le gabarit Sage 50
+        return f"{v:.2f}".replace(".", ",")
 
     def sage_csv_bytes(client_entries: Dict[str, List[TimeEntry]]) -> bytes:
         rows = []
         for c_name, c_list in client_entries.items():
-            c_cl = config.get_client_by_name(c_name)
             for e in sorted(c_list, key=lambda x: x.date):
-                montant = round(e.hours * c_cl.hourly_rate, 2)
                 rows.append({
+                    "Nom":         sage_employee,
                     "Date":        e.date.strftime(csv_date_fmt),
-                    "Employé":     sage_employee,
-                    "Client":      c_name,
-                    "Activité":    sage_activity,
-                    "Heures":      _num(e.hours),
-                    "Taux":        _num(c_cl.hourly_rate),
-                    "Montant":     _num(montant),
-                    "Description": e.description or "",
-                    "Facturable":  "Oui",
+                    "Revenu":      sage_revenu,
+                    "Heures":      _hours(e.hours),
+                    "Pièces":      "",       # travail horaire, pas à la pièce
+                    "Montant":     "",       # revenu horaire : Sage 50 applique le taux de l'employé
+                    "Projet":      c_name if sage_projet else "",
+                    "Commentaire": e.description or "",
                 })
-        return pd.DataFrame(rows).to_csv(index=False, sep=csv_sep).encode("utf-8-sig")
+        df = pd.DataFrame(rows, columns=SAGE_COLS)
+        # Encodage Windows (CP1252) comme le gabarit Sage 50 ; séparateur virgule,
+        # les valeurs contenant une virgule (ex. « 3,50 ») sont automatiquement citées.
+        return df.to_csv(index=False).encode("cp1252", errors="replace")
 
     st.markdown("---")
     st.markdown('<div class="section-hdr">Générer les factures</div>', unsafe_allow_html=True)
