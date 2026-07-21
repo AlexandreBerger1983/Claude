@@ -176,11 +176,7 @@ main{padding:20px;max-width:1400px;margin:0 auto}
     <input id="search-input" placeholder="Ticker (AAPL, MSFT, NVDA...)" autocomplete="off" autocapitalize="characters">
     <button class="btn-primary" id="search-btn" onclick="searchStock()">Analyser</button>
   </div>
-  <div class="api-wrap">
-    <input id="api-key-input" type="password" placeholder="Clé API Finnhub" autocomplete="off">
-    <button class="btn-secondary" onclick="saveApiKey()">Sauvegarder</button>
-    <span id="api-status" class="api-status no-key">Pas de clé</span>
-  </div>
+  <div class="api-wrap" style="font-size:12px;color:#3fb950;padding:0 8px">✓ Données Yahoo Finance</div>
 </header>
 
 <div class="tabs">
@@ -192,17 +188,6 @@ main{padding:20px;max-width:1400px;margin:0 auto}
 
 <!-- TAB: ANALYSE -->
 <div id="tab-analyse">
-  <div id="setup-banner" class="setup hidden">
-    <h2>⚙️ Configuration requise — Clé API Finnhub</h2>
-    <p>Pour récupérer les données boursières en temps réel, une clé API Finnhub gratuite est nécessaire.</p>
-    <ol>
-      <li>Va sur <a href="https://finnhub.io/register" target="_blank">finnhub.io/register</a> et crée un compte gratuit</li>
-      <li>Copie ta clé API (commence par <code>c...</code>)</li>
-      <li>Colle-la dans le champ <b>"Clé API Finnhub"</b> en haut à droite</li>
-      <li>Clique sur <b>Sauvegarder</b></li>
-    </ol>
-    <p style="margin-top:10px">Le plan gratuit : 60 appels/minute · Données temps réel · Aucune carte bancaire requise.</p>
-  </div>
 
   <div id="analyse-content">
     <div class="empty">
@@ -257,7 +242,6 @@ const WATCHLISTS = {
   ETF:        ['SPY','QQQ','IWM','DIA','GLD','TLT','VTI','ARKK','SOXL','TQQQ'],
 };
 const WEIGHTS = { technical: 0.40, fundamental: 0.35, momentum: 0.25 };
-const BASE = 'https://finnhub.io/api/v1';
 let priceChart = null, rsiChart = null;
 
 // ============================================================
@@ -269,89 +253,58 @@ const cache = { store: {},
 };
 
 // ============================================================
-// API KEY
+// YAHOO FINANCE — price history (v8 chart)
 // ============================================================
-function getKey(){ return localStorage.getItem('fh_key')||''; }
-async function saveApiKey(){
-  const k = document.getElementById('api-key-input').value.trim();
-  if(!k){ alert('Veuillez entrer une clé API'); return; }
-  localStorage.setItem('fh_key', k);
-  updateKeyStatus();
-  // Quick validation: test key with a lightweight call
-  const btn=document.querySelector('button[onclick="saveApiKey()"]');
-  const orig=btn.textContent; btn.textContent='Test...'; btn.disabled=true;
-  try{
-    const u=new URL('https://finnhub.io/api/v1/stock/profile2');
-    u.searchParams.set('symbol','AAPL'); u.searchParams.set('token',k);
-    const r=await fetch(u.toString());
-    if(r.status===401){ localStorage.removeItem('fh_key'); updateKeyStatus(); alert('Clé API invalide (401). Copiez exactement la clé depuis finnhub.io/dashboard'); return; }
-    if(r.status===403){ alert('Clé API valide mais accès limité — plan gratuit OK'); }
-  } catch(e){}
-  btn.textContent=orig; btn.disabled=false;
-  document.getElementById('setup-banner').classList.add('hidden');
-}
-function updateKeyStatus(){
-  const k=getKey(), el=document.getElementById('api-status');
-  if(k){ el.textContent='✓ Clé active'; el.className='api-status'; }
-  else { el.textContent='Pas de clé'; el.className='api-status no-key'; document.getElementById('setup-banner').classList.remove('hidden'); }
-}
-
-// ============================================================
-// FETCH
-// ============================================================
-async function apiFetch(endpoint, params={}, retries=2){
-  const k=getKey();
-  if(!k) throw new Error('Clé API manquante');
-  const u=new URL(BASE+endpoint);
-  Object.entries({...params,token:k}).forEach(([key,v])=>u.searchParams.set(key,v));
-  const ck=u.toString();
-  const cached=cache.get(ck);
-  if(cached) return cached;
-  let lastErr;
-  for(let attempt=0; attempt<=retries; attempt++){
-    if(attempt>0) await new Promise(r=>setTimeout(r, attempt*1500));
-    try{
-      const r=await fetch(u.toString());
-      if(r.status===429){
-        if(attempt<retries){ await new Promise(r=>setTimeout(r,2000)); continue; }
-        throw new Error('Limite de requêtes Finnhub atteinte — attendez 1 minute et réessayez');
-      }
-      if(r.status===403) throw new Error('Accès refusé (403) — vérifiez votre clé API Finnhub');
-      if(!r.ok) throw new Error(`Erreur API (HTTP ${r.status})`);
-      const text=await r.text();
-      if(!text||text.trim().startsWith('<')) throw new Error('Réponse HTML reçue — clé API invalide ou rate-limit');
-      const d=JSON.parse(text);
-      cache.set(ck,d);
-      return d;
-    } catch(e){
-      lastErr=e;
-      if(e.message.includes('403')||e.message.includes('clé API')) throw e;
-    }
-  }
-  throw lastErr||new Error('Erreur inconnue');
-}
-
 async function getCandles(sym, days=365){
-  // Yahoo Finance chart API — free, no key needed, CORS-enabled
   const range=days<=90?'3mo':days<=180?'6mo':'1y';
-  const yUrl=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`;
-  try {
-    const r=await fetch(yUrl,{headers:{Accept:'application/json'}});
-    const text=await r.text();
-    if(r.ok&&text&&!text.trim().startsWith('<')){
+  const ck=`candle_${sym}_${range}`;
+  const cached=cache.get(ck); if(cached) return cached;
+  const urls=[
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`,
+  ];
+  for(const url of urls){
+    try{
+      const r=await fetch(url,{headers:{Accept:'application/json'}});
+      const text=await r.text();
+      if(!r.ok||!text||text.trim().startsWith('<')) continue;
       const data=JSON.parse(text);
       const res=data?.chart?.result?.[0];
       if(res?.timestamp&&res.indicators?.quote?.[0]){
         const q=res.indicators.quote[0];
         const pts=res.timestamp.map((t,i)=>({t,o:q.open[i],h:q.high[i],l:q.low[i],c:q.close[i],v:q.volume[i]??0})).filter(x=>x.c!=null&&!isNaN(x.c));
-        if(pts.length>10) return {t:pts.map(x=>x.t),o:pts.map(x=>x.o),h:pts.map(x=>x.h),l:pts.map(x=>x.l),c:pts.map(x=>x.c),v:pts.map(x=>x.v),s:'ok'};
+        if(pts.length>10){
+          const result={t:pts.map(x=>x.t),o:pts.map(x=>x.o),h:pts.map(x=>x.h),l:pts.map(x=>x.l),c:pts.map(x=>x.c),v:pts.map(x=>x.v),s:'ok'};
+          cache.set(ck,result); return result;
+        }
       }
-    }
-  } catch(e){}
-  // Fallback: Finnhub candles (may require premium)
-  const to=Math.floor(Date.now()/1000);
-  const from=to-days*86400;
-  return apiFetch('/stock/candles',{symbol:sym,resolution:'D',from,to});
+    } catch(e){}
+  }
+  throw new Error(`Impossible de charger l'historique de ${sym}`);
+}
+
+// ============================================================
+// YAHOO FINANCE — fundamentals (v10 quoteSummary)
+// ============================================================
+async function getQuoteSummary(sym){
+  const ck=`qs_${sym}`;
+  const cached=cache.get(ck); if(cached) return cached;
+  const mods='financialData,defaultKeyStatistics,summaryProfile,summaryDetail,price';
+  const urls=[
+    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${encodeURIComponent(mods)}`,
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${encodeURIComponent(mods)}`,
+  ];
+  for(const url of urls){
+    try{
+      const r=await fetch(url,{headers:{Accept:'application/json'}});
+      const text=await r.text();
+      if(!r.ok||!text||text.trim().startsWith('<')) continue;
+      const data=JSON.parse(text);
+      const res=data?.quoteSummary?.result?.[0];
+      if(res){ cache.set(ck,res); return res; }
+    } catch(e){}
+  }
+  return {}; // return empty object — fundamentals optional
 }
 
 // ============================================================
@@ -465,45 +418,49 @@ function computeTechnical(candles){
   };
 }
 
-function computeFundamental(metrics, profile, price){
-  const m=metrics.metric||{};
-  const pe=m.peBasicExclExtraTTM||m.peTTM||0;
-  const pb=m.pbAnnual||0, ps=m.psTTM||0;
-  const roe=m.roeTTM||m.roeRfy||0;
-  const netMargin=m.netMarginTTM||0;
-  const revGrowth=m.revenueGrowthTTMYoy||m.revenueGrowthQuarterlyYoy||0;
-  const epsGrowth=m.epsGrowthTTMYoy||0;
-  const debtEq=m['totalDebt/totalEquityAnnual']||m['longTermDebt/equityAnnual']||0;
-  const curRatio=m.currentRatioAnnual||0;
-  const divYield=m.dividendYieldIndicatedAnnual||0;
-  const beta=profile.beta||1;
-  const mktCap=(profile.marketCapitalization||0)*1e6;
-  const name=profile.name||'', sector=profile.finnhubIndustry||profile.sector||'';
-  // Estimate fair value from P/E and EPS growth (no premium endpoint needed)
-  const eps=m.epsBasicExclExtraTTM||m.epsTTM||0;
-  const fairPE=epsGrowth>0?Math.min(30,15+epsGrowth):15;
-  const analystTarget=eps>0&&pe>0?eps*fairPE:0;
+function computeFundamental(qs, price){
+  // qs = Yahoo Finance quoteSummary result (may be empty {})
+  const v=x=>(typeof x==='object'&&x!==null&&'raw' in x)?x.raw:(x||0);
+  const fd=qs.financialData||{}, ks=qs.defaultKeyStatistics||{};
+  const sp=qs.summaryProfile||{}, sd=qs.summaryDetail||{}, pr=qs.price||{};
+
+  const pe=v(ks.trailingPE)||v(sd.trailingPE)||0;
+  const pb=v(ks.priceToBook)||0, ps=v(ks.priceToSalesTrailing12Months)||0;
+  const roe=v(fd.returnOnEquity)||0;        // decimal (0.25 = 25%)
+  const netMargin=v(fd.profitMargins)||0;   // decimal
+  const revGrowth=v(fd.revenueGrowth)||0;   // decimal
+  const epsGrowth=v(fd.earningsGrowth)||v(ks.earningsQuarterlyGrowth)||0;
+  const debtEq=(v(fd.debtToEquity)||0)/100; // YF gives 0-999, normalize to ratio
+  const curRatio=v(fd.currentRatio)||0;
+  const divYield=v(sd.dividendYield)||v(sd.trailingAnnualDividendYield)||0;
+  const beta=v(ks.beta)||v(sd.beta)||1;
+  const mktCap=v(pr.marketCap)||v(sd.marketCap)||0;
+  const name=pr.longName||pr.shortName||'';
+  const sector=sp.sector||'';
+  const analystTarget=v(fd.targetMeanPrice)||0;
   const upside=analystTarget&&price?(analystTarget-price)/price*100:0;
-  const analystRating='N/A';
+  const recMean=v(fd.recommendationMean)||3;
+  const analystRating=recMean<1.5?'Fort achat':recMean<2.5?'Achat':recMean<3.5?'Neutre':'Vente';
 
   let score=0; const signals=[];
   if(pe>0&&pe<15){signals.push(`P/E attractif (${pe.toFixed(1)})`);score+=20;}
   else if(pe>=15&&pe<25){score+=10;}
   else if(pe>40){signals.push(`P/E élevé (${pe.toFixed(1)})`);score-=15;}
-  if(roe>20){signals.push(`ROE excellent (${roe.toFixed(1)}%)`);score+=15;}
-  else if(roe>10) score+=8;
-  if(netMargin>20){signals.push(`Marge nette excellente (${netMargin.toFixed(1)}%)`);score+=12;}
-  else if(netMargin>10) score+=6;
-  if(revGrowth>20){signals.push(`Forte croissance revenus (+${revGrowth.toFixed(1)}%)`);score+=15;}
-  else if(revGrowth>5) score+=8;
-  else if(revGrowth<0){signals.push(`Revenus en baisse (${revGrowth.toFixed(1)}%)`);score-=10;}
+  if(roe>0.20){signals.push(`ROE excellent (${(roe*100).toFixed(1)}%)`);score+=15;}
+  else if(roe>0.10) score+=8;
+  if(netMargin>0.20){signals.push(`Marge nette excellente (${(netMargin*100).toFixed(1)}%)`);score+=12;}
+  else if(netMargin>0.10) score+=6;
+  if(revGrowth>0.20){signals.push(`Forte croissance revenus (+${(revGrowth*100).toFixed(1)}%)`);score+=15;}
+  else if(revGrowth>0.05) score+=8;
+  else if(revGrowth<0){signals.push(`Revenus en baisse (${(revGrowth*100).toFixed(1)}%)`);score-=10;}
   if(debtEq>2){signals.push(`Dette élevée (D/E: ${debtEq.toFixed(1)})`);score-=12;}
   else if(debtEq>0&&debtEq<0.5) score+=10;
   if(upside>20){signals.push(`Potentiel analystes: +${upside.toFixed(1)}%`);score+=12;}
   else if(upside<-10) score-=10;
 
-  return {pe,pb,ps,roe,netMargin,revGrowth,epsGrowth,debtEq,curRatio,divYield,beta,
-    mktCap,name,sector,analystTarget,upside,analystRating,signals,score:Math.max(-100,Math.min(100,score))};
+  return {pe,pb,ps,roe:roe*100,netMargin:netMargin*100,revGrowth:revGrowth*100,epsGrowth:epsGrowth*100,
+    debtEq,curRatio,divYield:divYield*100,beta,mktCap,name,sector,analystTarget,upside,
+    analystRating,signals,score:Math.max(-100,Math.min(100,score))};
 }
 
 function computeMomentum(candles){
@@ -784,25 +741,20 @@ function changePeriod(btn, days){
 async function searchStock(){
   const sym = document.getElementById('search-input').value.trim().toUpperCase();
   if(!sym) return;
-  if(!getKey()){document.getElementById('setup-banner').classList.remove('hidden');return;}
-
-  document.getElementById('analyse-content').innerHTML = `<div class="loading"><div class="spinner"></div><div>Analyse de ${sym} en cours...</div></div>`;
+  const el=document.getElementById('analyse-content');
 
   try {
-    const el=document.getElementById('analyse-content');
     el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Récupération historique ${sym}...</div></div>`;
     const candlesData = await getCandles(sym, 365);
     if(!candlesData.c || candlesData.s==='no_data'){
       el.innerHTML=`<div class="empty"><div class="icon">❌</div><div>Ticker introuvable : ${sym}</div></div>`;
       return;
     }
-    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Profil entreprise...</div></div>`;
-    const profileData = await apiFetch('/stock/profile2', {symbol:sym});
-    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Métriques financières...</div></div>`;
-    const metricsData = await apiFetch('/stock/metric', {symbol:sym, metric:'all'});
+    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Données fondamentales ${sym}...</div></div>`;
+    const qs = await getQuoteSummary(sym);
 
     const tech = computeTechnical(candlesData);
-    const fund = computeFundamental(metricsData, profileData, tech.price);
+    const fund = computeFundamental(qs, tech.price);
     const mom  = computeMomentum(candlesData);
     const comb = combined(tech, fund, mom);
 
@@ -811,7 +763,7 @@ async function searchStock(){
     renderCharts(sym, tech, 63);
 
   } catch(e) {
-    document.getElementById('analyse-content').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div style="font-weight:600">${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Conseil: le plan gratuit Finnhub permet 60 appels/minute. Attendez quelques secondes et réessayez.</div></div>`;
+    el.innerHTML = `<div class="empty"><div class="icon">⚠️</div><div style="font-weight:600">${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Vérifiez le ticker et réessayez. Ex: AAPL, MSFT, NVDA, TSLA</div></div>`;
   }
 }
 
@@ -822,7 +774,6 @@ document.getElementById('search-input').addEventListener('keydown', e=>{if(e.key
 // ============================================================
 async function runScreener(){
   const sc=document.getElementById('screener-content');
-  if(!getKey()){document.getElementById('setup-banner').classList.remove('hidden');showTab('analyse');return;}
   const wl = WATCHLISTS[document.getElementById('wl-select').value] || WATCHLISTS.SP500;
   const mode = document.getElementById('mode-select').value;
   const days = mode==='long'?1260:mode==='medium'?252:180;
@@ -841,21 +792,18 @@ async function runScreener(){
     pf.style.width=`${(i/wl.length*100)}%`;
     try {
       const cd = await getCandles(sym, Math.min(days,365));
-      if(!cd.c||cd.s==='no_data'){ await new Promise(r=>setTimeout(r,300)); continue; }
-      const pd = await apiFetch('/stock/profile2',{symbol:sym});
-      const md = await apiFetch('/stock/metric',{symbol:sym,metric:'all'});
-      const tech=computeTechnical(cd), fund=computeFundamental(md,pd,tech.price), mom=computeMomentum(cd);
+      if(!cd.c||cd.s==='no_data') continue;
+      const qs = await getQuoteSummary(sym);
+      const tech=computeTechnical(cd), fund=computeFundamental(qs,tech.price), mom=computeMomentum(cd);
       const comb=combined(tech,fund,mom), conf=confidence(tech,fund,mom,comb), v=verdict(comb);
       const rec=buildRec(tech,fund,mom,comb);
       results.push({sym,tech,fund,mom,comb,conf,v,rec});
-    } catch(e) {
-      if(e.message.includes('401')||e.message.includes('invalide')||e.message.includes('Clé API invalide')) throw e;
-    }
-    await new Promise(r=>setTimeout(r,350));
+    } catch(e) { /* skip ticker on error */ }
+    await new Promise(r=>setTimeout(r,200));
   }
   } catch(e) {
     pf.style.width='0'; pw.style.display='none';
-    sc.innerHTML=`<div class="empty"><div class="icon">🔑</div><div style="font-weight:600">${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Resaisissez votre clé API Finnhub en haut à droite et cliquez Sauvegarder.</div></div>`;
+    sc.innerHTML=`<div class="empty"><div class="icon">⚠️</div><div style="font-weight:600">${e.message}</div></div>`;
     return;
   }
 
@@ -964,14 +912,7 @@ function showTab(name){
   document.getElementById('tab-screener').classList.toggle('hidden',name!=='screener');
 }
 
-// ============================================================
-// INIT
-// ============================================================
-(function init(){
-  const k=getKey();
-  if(k) document.getElementById('api-key-input').value='•'.repeat(12);
-  updateKeyStatus();
-})();
+// nothing to init — no API key required
 </script>
 </body>
 </html>
