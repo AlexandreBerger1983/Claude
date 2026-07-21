@@ -1,8 +1,9 @@
 name: Déploiement GitHub Pages (Mobilité articulaire)
 
 # Publie l'application « mobilité articulaire » sur GitHub Pages.
-# Le dossier mobilite-articulaire/ devient la racine du site :
-#   https://<utilisateur>.github.io/Claude/
+# L'application est servie dans un sous-dossier au nom de la branche :
+#   https://<utilisateur>.github.io/Claude/claude/joint-angle-mobility-app-lp0bpy/
+# La racine du site redirige vers ce sous-dossier.
 on:
   push:
     branches: [claude/joint-angle-mobility-app-lp0bpy]
@@ -36,10 +37,25 @@ jobs:
         with:
           enablement: true
 
-      - name: Téléverser le site (dossier de l'application)
+      - name: Assembler le site (application dans un sous-dossier au nom de la branche)
+        run: |
+          chemin="claude/joint-angle-mobility-app-lp0bpy"
+          mkdir -p "_site/$chemin"
+          cp -r mobilite-articulaire/. "_site/$chemin/"
+          # La racine du dépôt redirige vers l'application
+          cat > _site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="fr"><head><meta charset="UTF-8">
+          <meta http-equiv="refresh" content="0; url=./claude/joint-angle-mobility-app-lp0bpy/">
+          <link rel="canonical" href="./claude/joint-angle-mobility-app-lp0bpy/">
+          <title>Mobilité articulaire</title></head>
+          <body><p>Redirection vers <a href="./claude/joint-angle-mobility-app-lp0bpy/">l'application Mobilité articulaire</a>…</p></body></html>
+          HTML
+
+      - name: Téléverser le site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: mobilite-articulaire
+          path: _site
 
       - name: Déployer sur GitHub Pages
         id: deploiement
