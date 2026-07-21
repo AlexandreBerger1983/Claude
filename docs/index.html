@@ -288,19 +288,36 @@ function updateKeyStatus(){
 // ============================================================
 // FETCH
 // ============================================================
-async function apiFetch(endpoint, params={}){
+async function apiFetch(endpoint, params={}, retries=2){
   const k=getKey();
   if(!k) throw new Error('Clé API manquante');
   const u=new URL(BASE+endpoint);
-  Object.entries({...params,token:k}).forEach(([k,v])=>u.searchParams.set(k,v));
+  Object.entries({...params,token:k}).forEach(([key,v])=>u.searchParams.set(key,v));
   const ck=u.toString();
   const cached=cache.get(ck);
   if(cached) return cached;
-  const r=await fetch(u.toString());
-  if(!r.ok) throw new Error(`HTTP ${r.status}`);
-  const d=await r.json();
-  cache.set(ck,d);
-  return d;
+  let lastErr;
+  for(let attempt=0; attempt<=retries; attempt++){
+    if(attempt>0) await new Promise(r=>setTimeout(r, attempt*1500));
+    try{
+      const r=await fetch(u.toString());
+      if(r.status===429){
+        if(attempt<retries){ await new Promise(r=>setTimeout(r,2000)); continue; }
+        throw new Error('Limite de requêtes Finnhub atteinte — attendez 1 minute et réessayez');
+      }
+      if(r.status===403) throw new Error('Accès refusé (403) — vérifiez votre clé API Finnhub');
+      if(!r.ok) throw new Error(`Erreur API (HTTP ${r.status})`);
+      const text=await r.text();
+      if(!text||text.trim().startsWith('<')) throw new Error('Réponse HTML reçue — clé API invalide ou rate-limit');
+      const d=JSON.parse(text);
+      cache.set(ck,d);
+      return d;
+    } catch(e){
+      lastErr=e;
+      if(e.message.includes('403')||e.message.includes('clé API')) throw e;
+    }
+  }
+  throw lastErr||new Error('Erreur inconnue');
 }
 
 async function getCandles(sym, days=365){
@@ -744,16 +761,17 @@ async function searchStock(){
   document.getElementById('analyse-content').innerHTML = `<div class="loading"><div class="spinner"></div><div>Analyse de ${sym} en cours...</div></div>`;
 
   try {
-    const [candlesData, profileData, metricsData] = await Promise.all([
-      getCandles(sym, 365),
-      apiFetch('/stock/profile2', {symbol:sym}),
-      apiFetch('/stock/metric', {symbol:sym, metric:'all'}),
-    ]);
-
+    const el=document.getElementById('analyse-content');
+    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Récupération historique ${sym}...</div></div>`;
+    const candlesData = await getCandles(sym, 365);
     if(!candlesData.c || candlesData.s==='no_data'){
-      document.getElementById('analyse-content').innerHTML = `<div class="empty"><div class="icon">❌</div><div>Ticker introuvable : ${sym}</div></div>`;
+      el.innerHTML=`<div class="empty"><div class="icon">❌</div><div>Ticker introuvable : ${sym}</div></div>`;
       return;
     }
+    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Profil entreprise...</div></div>`;
+    const profileData = await apiFetch('/stock/profile2', {symbol:sym});
+    el.innerHTML=`<div class="loading"><div class="spinner"></div><div>Métriques financières...</div></div>`;
+    const metricsData = await apiFetch('/stock/metric', {symbol:sym, metric:'all'});
 
     const tech = computeTechnical(candlesData);
     const fund = computeFundamental(metricsData, profileData, tech.price);
@@ -765,7 +783,7 @@ async function searchStock(){
     renderCharts(sym, tech, 63);
 
   } catch(e) {
-    document.getElementById('analyse-content').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div>Erreur: ${e.message}</div><div style="margin-top:8px;font-size:12px">Vérifiez votre clé API ou réessayez dans quelques secondes.</div></div>`;
+    document.getElementById('analyse-content').innerHTML = `<div class="empty"><div class="icon">⚠️</div><div style="font-weight:600">${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Conseil: le plan gratuit Finnhub permet 60 appels/minute. Attendez quelques secondes et réessayez.</div></div>`;
   }
 }
 
