@@ -253,34 +253,44 @@ const cache = { store: {},
 };
 
 // ============================================================
+// CORS-SAFE FETCH — tries direct, then proxy fallbacks
+// ============================================================
+async function safeFetch(url, cacheKey){
+  if(cacheKey){ const c=cache.get(cacheKey); if(c) return c; }
+  // Build list: direct + two CORS proxies
+  const candidates=[
+    url,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  ];
+  for(const u of candidates){
+    try{
+      const r=await fetch(u,{headers:{Accept:'application/json'}});
+      const text=await r.text();
+      if(!text||text.trimStart().startsWith('<')||text.trimStart().startsWith('<!')) continue;
+      const data=JSON.parse(text);
+      if(cacheKey) cache.set(cacheKey,data);
+      return data;
+    } catch(e){} // network/CORS/parse error → try next
+  }
+  return null;
+}
+
+// ============================================================
 // YAHOO FINANCE — price history (v8 chart)
 // ============================================================
 async function getCandles(sym, days=365){
   const range=days<=90?'3mo':days<=180?'6mo':'1y';
   const ck=`candle_${sym}_${range}`;
-  const cached=cache.get(ck); if(cached) return cached;
-  const urls=[
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`,
-  ];
-  for(const url of urls){
-    try{
-      const r=await fetch(url,{headers:{Accept:'application/json'}});
-      const text=await r.text();
-      if(!r.ok||!text||text.trim().startsWith('<')) continue;
-      const data=JSON.parse(text);
-      const res=data?.chart?.result?.[0];
-      if(res?.timestamp&&res.indicators?.quote?.[0]){
-        const q=res.indicators.quote[0];
-        const pts=res.timestamp.map((t,i)=>({t,o:q.open[i],h:q.high[i],l:q.low[i],c:q.close[i],v:q.volume[i]??0})).filter(x=>x.c!=null&&!isNaN(x.c));
-        if(pts.length>10){
-          const result={t:pts.map(x=>x.t),o:pts.map(x=>x.o),h:pts.map(x=>x.h),l:pts.map(x=>x.l),c:pts.map(x=>x.c),v:pts.map(x=>x.v),s:'ok'};
-          cache.set(ck,result); return result;
-        }
-      }
-    } catch(e){}
+  const base=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`;
+  const data=await safeFetch(base, ck);
+  const res=data?.chart?.result?.[0];
+  if(res?.timestamp&&res.indicators?.quote?.[0]){
+    const q=res.indicators.quote[0];
+    const pts=res.timestamp.map((t,i)=>({t,o:q.open[i],h:q.high[i],l:q.low[i],c:q.close[i],v:q.volume[i]??0})).filter(x=>x.c!=null&&!isNaN(x.c));
+    if(pts.length>10) return {t:pts.map(x=>x.t),o:pts.map(x=>x.o),h:pts.map(x=>x.h),l:pts.map(x=>x.l),c:pts.map(x=>x.c),v:pts.map(x=>x.v),s:'ok'};
   }
-  throw new Error(`Impossible de charger l'historique de ${sym}`);
+  throw new Error(`Ticker introuvable ou données indisponibles : ${sym}`);
 }
 
 // ============================================================
@@ -288,23 +298,10 @@ async function getCandles(sym, days=365){
 // ============================================================
 async function getQuoteSummary(sym){
   const ck=`qs_${sym}`;
-  const cached=cache.get(ck); if(cached) return cached;
   const mods='financialData,defaultKeyStatistics,summaryProfile,summaryDetail,price';
-  const urls=[
-    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${encodeURIComponent(mods)}`,
-    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${encodeURIComponent(mods)}`,
-  ];
-  for(const url of urls){
-    try{
-      const r=await fetch(url,{headers:{Accept:'application/json'}});
-      const text=await r.text();
-      if(!r.ok||!text||text.trim().startsWith('<')) continue;
-      const data=JSON.parse(text);
-      const res=data?.quoteSummary?.result?.[0];
-      if(res){ cache.set(ck,res); return res; }
-    } catch(e){}
-  }
-  return {}; // return empty object — fundamentals optional
+  const base=`https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${encodeURIComponent(mods)}`;
+  const data=await safeFetch(base, ck);
+  return data?.quoteSummary?.result?.[0]||{};
 }
 
 // ============================================================
