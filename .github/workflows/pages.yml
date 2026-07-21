@@ -1,0 +1,46 @@
+name: Déploiement GitHub Pages (Mobilité articulaire)
+
+# Publie l'application « mobilité articulaire » sur GitHub Pages.
+# Le dossier mobilite-articulaire/ devient la racine du site :
+#   https://<utilisateur>.github.io/Claude/
+on:
+  push:
+    branches: [claude/joint-angle-mobility-app-lp0bpy]
+    paths:
+      - 'mobilite-articulaire/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois ; on n'annule pas un déploiement en cours.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploiement:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Configurer Pages (active Pages si nécessaire)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Téléverser le site (dossier de l'application)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: mobilite-articulaire
+
+      - name: Déployer sur GitHub Pages
+        id: deploiement
+        uses: actions/deploy-pages@v4
