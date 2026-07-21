@@ -420,7 +420,7 @@ function computeTechnical(candles){
   };
 }
 
-function computeFundamental(metrics, profile, recs, target, price){
+function computeFundamental(metrics, profile, price){
   const m=metrics.metric||{};
   const pe=m.peBasicExclExtraTTM||m.peTTM||0;
   const pb=m.pbAnnual||0, ps=m.psTTM||0;
@@ -434,16 +434,12 @@ function computeFundamental(metrics, profile, recs, target, price){
   const beta=profile.beta||1;
   const mktCap=(profile.marketCapitalization||0)*1e6;
   const name=profile.name||'', sector=profile.finnhubIndustry||profile.sector||'';
-  const analystTarget=target.targetMean||0;
+  // Estimate fair value from P/E and EPS growth (no premium endpoint needed)
+  const eps=m.epsBasicExclExtraTTM||m.epsTTM||0;
+  const fairPE=epsGrowth>0?Math.min(30,15+epsGrowth):15;
+  const analystTarget=eps>0&&pe>0?eps*fairPE:0;
   const upside=analystTarget&&price?(analystTarget-price)/price*100:0;
-
-  let analystRating='N/A';
-  if(recs&&recs.length>0){
-    const lat=recs[0];
-    const tot=(lat.strongBuy||0)+(lat.buy||0)+(lat.hold||0)+(lat.sell||0)+(lat.strongSell||0);
-    const bull=((lat.strongBuy||0)*2+(lat.buy||0))/(tot||1);
-    analystRating=bull>0.6?'Fort achat':bull>0.3?'Achat':bull>0.1?'Neutre':'Vente';
-  }
+  const analystRating='N/A';
 
   let score=0; const signals=[];
   if(pe>0&&pe<15){signals.push(`P/E attractif (${pe.toFixed(1)})`);score+=20;}
@@ -748,12 +744,10 @@ async function searchStock(){
   document.getElementById('analyse-content').innerHTML = `<div class="loading"><div class="spinner"></div><div>Analyse de ${sym} en cours...</div></div>`;
 
   try {
-    const [candlesData, profileData, metricsData, recsData, targetData] = await Promise.all([
+    const [candlesData, profileData, metricsData] = await Promise.all([
       getCandles(sym, 365),
       apiFetch('/stock/profile2', {symbol:sym}),
       apiFetch('/stock/metric', {symbol:sym, metric:'all'}),
-      apiFetch('/recommendation', {symbol:sym}),
-      apiFetch('/stock/price-target', {symbol:sym}),
     ]);
 
     if(!candlesData.c || candlesData.s==='no_data'){
@@ -762,7 +756,7 @@ async function searchStock(){
     }
 
     const tech = computeTechnical(candlesData);
-    const fund = computeFundamental(metricsData, profileData, recsData, targetData, tech.price);
+    const fund = computeFundamental(metricsData, profileData, tech.price);
     const mom  = computeMomentum(candlesData);
     const comb = combined(tech, fund, mom);
 
@@ -798,15 +792,13 @@ async function runScreener(){
     pt.textContent=`Analyse ${sym} (${i+1}/${wl.length})`;
     pf.style.width=`${(i/wl.length*100)}%`;
     try {
-      const [cd, pd, md, rd, td] = await Promise.all([
+      const [cd, pd, md] = await Promise.all([
         getCandles(sym, Math.min(days,365)),
         apiFetch('/stock/profile2',{symbol:sym}),
         apiFetch('/stock/metric',{symbol:sym,metric:'all'}),
-        apiFetch('/recommendation',{symbol:sym}),
-        apiFetch('/stock/price-target',{symbol:sym}),
       ]);
       if(!cd.c||cd.s==='no_data') continue;
-      const tech=computeTechnical(cd), fund=computeFundamental(md,pd,rd,td,computeTechnical(cd).price), mom=computeMomentum(cd);
+      const tech=computeTechnical(cd), fund=computeFundamental(md,pd,tech.price), mom=computeMomentum(cd);
       const comb=combined(tech,fund,mom), conf=confidence(tech,fund,mom,comb), v=verdict(comb);
       const rec=buildRec(tech,fund,mom,comb);
       results.push({sym,tech,fund,mom,comb,conf,v,rec});
