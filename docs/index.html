@@ -718,7 +718,7 @@ function renderAnalysis(sym, tech, fund, mom, comb){
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       ${['1 sem','1 mois','3 mois','6 mois','1 an'].map((lbl,i)=>{
         const v=[mom.r1w,mom.r1m,mom.r3m,mom.r6m,mom.r1y][i];
-        return `<div style="flex:1;min-width:80px;text-align:center;background:var(--bg3);border-radius:6px;padding:12px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">${lbl}</div><div style="font-size:18px;font-weight:700;color:${v>=0?'var(--green)':'var(--red)';} margin-top:4px">${fmt.pct(v)}</div></div>`;
+        return `<div style="flex:1;min-width:80px;text-align:center;background:var(--bg3);border-radius:6px;padding:12px"><div style="font-size:11px;color:var(--muted);text-transform:uppercase">${lbl}</div><div style="font-size:18px;font-weight:700;color:${v>=0?'var(--green)':'var(--red)'};margin-top:4px">${fmt.pct(v)}</div></div>`;
       }).join('')}
     </div>
   </div>
