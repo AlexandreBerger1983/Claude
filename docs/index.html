@@ -272,11 +272,22 @@ const cache = { store: {},
 // API KEY
 // ============================================================
 function getKey(){ return localStorage.getItem('fh_key')||''; }
-function saveApiKey(){
+async function saveApiKey(){
   const k = document.getElementById('api-key-input').value.trim();
   if(!k){ alert('Veuillez entrer une clé API'); return; }
   localStorage.setItem('fh_key', k);
   updateKeyStatus();
+  // Quick validation: test key with a lightweight call
+  const btn=document.querySelector('button[onclick="saveApiKey()"]');
+  const orig=btn.textContent; btn.textContent='Test...'; btn.disabled=true;
+  try{
+    const u=new URL('https://finnhub.io/api/v1/stock/profile2');
+    u.searchParams.set('symbol','AAPL'); u.searchParams.set('token',k);
+    const r=await fetch(u.toString());
+    if(r.status===401){ localStorage.removeItem('fh_key'); updateKeyStatus(); alert('Clé API invalide (401). Copiez exactement la clé depuis finnhub.io/dashboard'); return; }
+    if(r.status===403){ alert('Clé API valide mais accès limité — plan gratuit OK'); }
+  } catch(e){}
+  btn.textContent=orig; btn.disabled=false;
   document.getElementById('setup-banner').classList.add('hidden');
 }
 function updateKeyStatus(){
@@ -793,6 +804,7 @@ document.getElementById('search-input').addEventListener('keydown', e=>{if(e.key
 // SCREENER
 // ============================================================
 async function runScreener(){
+  const sc=document.getElementById('screener-content');
   if(!getKey()){document.getElementById('setup-banner').classList.remove('hidden');showTab('analyse');return;}
   const wl = WATCHLISTS[document.getElementById('wl-select').value] || WATCHLISTS.SP500;
   const mode = document.getElementById('mode-select').value;
@@ -802,32 +814,38 @@ async function runScreener(){
   const pf = document.getElementById('progress-fill');
   const pt = document.getElementById('progress-text');
   pw.style.display='flex';
-  document.getElementById('screener-content').innerHTML = '';
+  sc.innerHTML = '';
 
   const results = [];
+  try {
   for(let i=0;i<wl.length;i++){
     const sym=wl[i];
     pt.textContent=`Analyse ${sym} (${i+1}/${wl.length})`;
     pf.style.width=`${(i/wl.length*100)}%`;
     try {
-      const [cd, pd, md] = await Promise.all([
-        getCandles(sym, Math.min(days,365)),
-        apiFetch('/stock/profile2',{symbol:sym}),
-        apiFetch('/stock/metric',{symbol:sym,metric:'all'}),
-      ]);
-      if(!cd.c||cd.s==='no_data') continue;
+      const cd = await getCandles(sym, Math.min(days,365));
+      if(!cd.c||cd.s==='no_data'){ await new Promise(r=>setTimeout(r,300)); continue; }
+      const pd = await apiFetch('/stock/profile2',{symbol:sym});
+      const md = await apiFetch('/stock/metric',{symbol:sym,metric:'all'});
       const tech=computeTechnical(cd), fund=computeFundamental(md,pd,tech.price), mom=computeMomentum(cd);
       const comb=combined(tech,fund,mom), conf=confidence(tech,fund,mom,comb), v=verdict(comb);
       const rec=buildRec(tech,fund,mom,comb);
       results.push({sym,tech,fund,mom,comb,conf,v,rec});
-    } catch(e) {}
-    await new Promise(r=>setTimeout(r,200));
+    } catch(e) {
+      if(e.message.includes('401')||e.message.includes('invalide')||e.message.includes('Clé API invalide')) throw e;
+    }
+    await new Promise(r=>setTimeout(r,350));
+  }
+  } catch(e) {
+    pf.style.width='0'; pw.style.display='none';
+    sc.innerHTML=`<div class="empty"><div class="icon">🔑</div><div style="font-weight:600">${e.message}</div><div style="margin-top:8px;font-size:12px;color:var(--muted)">Resaisissez votre clé API Finnhub en haut à droite et cliquez Sauvegarder.</div></div>`;
+    return;
   }
 
   pf.style.width='100%';
   pw.style.display='none';
 
-  if(!results.length){document.getElementById('screener-content').innerHTML='<div class="empty"><div class="icon">❌</div><div>Aucun résultat</div></div>';return;}
+  if(!results.length){sc.innerHTML='<div class="empty"><div class="icon">❌</div><div>Aucun résultat</div></div>';return;}
 
   results.sort((a,b)=>b.comb-a.comb);
   const top5=results.slice(0,5);
