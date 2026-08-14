@@ -8,6 +8,7 @@ Aucune configuration Azure AD requise.
 """
 
 import io
+import json
 import unicodedata
 import zipfile
 from collections import defaultdict
@@ -134,6 +135,58 @@ def sage50_customers_export(clients: List[Client], header: str = _SAGE50_CUSTOME
         ]
         lines.append(",".join(q(f) for f in fields) + ",")
     return ("\r\n".join(lines) + "\r\n").encode("cp1252", errors="replace")
+
+
+def _invoice_record_to_integration_dict(rec) -> dict:
+    """Représentation structurée d'une facture pour un script d'intégration local
+    (SDK Sage 50 ou automatisation d'interface). Indépendant de la version de Sage 50."""
+    client = rec.client or {}
+    company = rec.company or {}
+    lignes = []
+    rate = 0.0
+    try:
+        rate = float(client.get("hourly_rate", 0) or 0)
+    except (TypeError, ValueError):
+        rate = 0.0
+    for e in rec.entries:
+        heures = float(e.get("hours", 0) or 0)
+        lignes.append({
+            "date": (e.get("date", "") or "")[:10],
+            "description": e.get("description", ""),
+            "heures": round(heures, 2),
+            "taux": round(rate, 2),
+            "montant": round(heures * rate, 2),
+        })
+    return {
+        "numero_facture": rec.invoice_number,
+        "date_facture": rec.issue_date,
+        "date_echeance": rec.due_date,
+        "statut": rec.display_status,
+        "client": {
+            "nom": rec.client_name,
+            "adresse": client.get("address", ""),
+            "ville": client.get("city", ""),
+            "code_postal": client.get("postal_code", ""),
+            "pays": client.get("country", ""),
+            "courriel": client.get("email", ""),
+            "numero_tps": client.get("tps_number", ""),
+            "numero_tvq": client.get("tvq_number", ""),
+        },
+        "lignes": lignes,
+        "sous_total": round(rec.subtotal, 2),
+        "tps": round(rec.tps, 2),
+        "tvq": round(rec.tvq, 2),
+        "total": round(rec.total, 2),
+        "heures_totales": round(rec.hours, 2),
+        "devise": company.get("currency", "CAD"),
+        "notes": rec.notes,
+        "emetteur": {
+            "nom": company.get("name", ""),
+            "neq": company.get("neq", ""),
+            "numero_tps": company.get("tps_number", ""),
+            "numero_tvq": company.get("tvq_number", ""),
+        },
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1136,6 +1189,29 @@ def page_history():
     )
     if status_filter != "Toutes":
         records_sorted = [r for r in records_sorted if r.display_status == status_filter]
+
+    # ── Export JSON pour intégration Sage 50 (SDK / script local) ────
+    with st.expander("🔌 Exporter les factures (JSON) pour intégration Sage 50", expanded=False):
+        st.markdown(
+            """
+            <div class="step-box">
+            Export structuré destiné à un <b>script local Windows</b> qui crée les factures
+            dans Sage 50 (via le SDK ou l'automatisation d'interface). Contient tout ce
+            qu'il faut : client, adresse, n°, dates, lignes détaillées, sous-total,
+            TPS, TVQ, total et numéros de taxe.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        payload = [_invoice_record_to_integration_dict(r) for r in records_sorted]
+        st.download_button(
+            f"⬇️ Exporter {len(payload)} facture(s) en JSON",
+            data=json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name=f"Factures_integration_{date.today().isoformat()}.json",
+            mime="application/json",
+            key="dl_invoices_json",
+        )
+        st.caption("Respecte le filtre de statut ci-dessus.")
 
     gen = InvoiceGenerator()
     logo = config.get_logo()
