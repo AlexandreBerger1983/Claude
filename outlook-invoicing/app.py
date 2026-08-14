@@ -1317,9 +1317,10 @@ def page_history():
         cyear = get_config().get_company()
         iv1, iv2, iv3 = st.columns(3)
         with iv1:
-            imp_version = st.text_input("Version du fichier .IMP", value="31001",
+            imp_version = st.text_input("Version du fichier .IMP", value="33101",
                                         key="imp_ver",
-                                        help="31001 = Sage 50 2024. Voir la 1ʳᵉ ligne d'un .IMP de votre version.")
+                                        help="Sage 50 2026 ≈ 33101 (numéro vu dans votre export clients). "
+                                             "2024 = 31001. Si erreur de version, essayez 33001.")
             imp_country = st.text_input("Code pays", value="1", key="imp_country",
                                         help="Canada = 1")
         with iv2:
