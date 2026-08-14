@@ -189,6 +189,88 @@ def _invoice_record_to_integration_dict(rec) -> dict:
     }
 
 
+def sage50_salinvoices_imp(
+    records,
+    *,
+    version: str = "31001",
+    country: str = "1",
+    tax1_name: str = "GST",
+    tax1_rate: float = 5.0,
+    tax2_name: str = "QST",
+    tax2_rate: float = 9.975,
+    payment_code: str = "",
+    payment_method: str = "",
+) -> bytes:
+    """
+    Génère un fichier d'importation de transactions Sage 50 Canada (.IMP) contenant
+    des factures de vente <Salinvoice>, selon la spécification officielle du format .IMP.
+
+    Structure par facture :
+      - ligne client (13 champs) : nom, "", "", adresse, "", ville, province,
+        code postal, pays, tél1, tél2, fax, courriel
+      - ligne d'options (8 champs) : nb de détails, "", n° facture, date (M-J-AAAA),
+        code paiement, mode paiement, montant total, "0.00"
+      - une ligne de détail par prestation : description, quantité, prix, montant,
+        puis pour CHAQUE taxe : nom, indicateur, indicateur, taux, montant
+    Décimales avec point, chaînes entre guillemets, encodage CP1252, fins de ligne CRLF.
+    """
+    def q(v) -> str:
+        return '"' + str(v if v is not None else "").replace('"', "") + '"'
+
+    def amt2(v: float) -> str:
+        return '"' + f"{float(v):.2f}" + '"'
+
+    def qty4(v: float) -> str:
+        return '"' + f"{float(v):.4f}" + '"'
+
+    def rate_str(v: float) -> str:
+        s = f"{float(v):.3f}".rstrip("0").rstrip(".")
+        return '"' + (s if s else "0") + '"'
+
+    def date_imp(iso: str) -> str:
+        d = datetime.fromisoformat(iso)
+        return f'"{d.month}-{d.day}-{d.year}"'
+
+    lines = ["<Version>", f'{q(version)}, {q(country)}', "</Version>"]
+
+    for rec in records:
+        cl = rec.client or {}
+        try:
+            rate_val = float(cl.get("hourly_rate", 0) or 0)
+        except (TypeError, ValueError):
+            rate_val = 0.0
+
+        entries = rec.entries or []
+        n_details = len(entries) if entries else 1
+
+        cust_line = ", ".join([
+            q(rec.client_name), '""', '""', q(cl.get("address", "")), '""',
+            q(cl.get("city", "")), q(cl.get("province", "")), q(cl.get("postal_code", "")),
+            q(cl.get("country", "")), '""', '""', '""', q(cl.get("email", "")),
+        ])
+        opt_line = ", ".join([
+            q(n_details), '""', q(rec.invoice_number), date_imp(rec.issue_date),
+            q(payment_code), q(payment_method), amt2(rec.total), '"0.00"',
+        ])
+
+        block = ["<Salinvoice>", cust_line, opt_line]
+        for e in entries:
+            hrs = float(e.get("hours", 0) or 0)
+            amount = round(hrs * rate_val, 2)
+            t1 = round(amount * tax1_rate / 100, 2)
+            t2 = round(amount * tax2_rate / 100, 2)
+            desc = (e.get("description", "") or "Service").strip()
+            block.append(", ".join([
+                q(desc), qty4(hrs), qty4(rate_val), amt2(amount),
+                q(tax1_name), '"0"', '"1"', rate_str(tax1_rate), amt2(t1),
+                q(tax2_name), '"0"', '"0"', rate_str(tax2_rate), amt2(t2),
+            ]))
+        block.append("</Salinvoice>")
+        lines.extend(block)
+
+    return ("\r\n".join(lines) + "\r\n").encode("cp1252", errors="replace")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Config page
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1212,6 +1294,69 @@ def page_history():
             key="dl_invoices_json",
         )
         st.caption("Respecte le filtre de statut ci-dessus.")
+
+    # ── Export .IMP — Factures de vente importables dans Sage 50 ─────
+    with st.expander("🧾 Exporter en .IMP (Factures de vente Sage 50)", expanded=False):
+        st.markdown(
+            """
+            <div class="step-box">
+            Génère un fichier <b>.IMP</b> importable directement comme <b>factures de vente</b> :<br/>
+            Sage 50 → <b>Fichier → Importer/Exporter → Importer des transactions →
+            Factures de clients</b>.<br/>
+            <b>Important :</b> les clients doivent déjà exister dans Sage 50 (utilisez
+            l'export clients au besoin), et la devise de base doit être <b>CAD</b>.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.warning(
+            "⚠️ **Premier essai à valider.** Ce format est reconstitué d'après la "
+            "spécification Sage. Trois réglages doivent correspondre à VOTRE Sage 50 "
+            "(Configuration → Codes de taxe) — ajustez-les ci-dessous puis testez avec **une** facture."
+        )
+        cyear = get_config().get_company()
+        iv1, iv2, iv3 = st.columns(3)
+        with iv1:
+            imp_version = st.text_input("Version du fichier .IMP", value="31001",
+                                        key="imp_ver",
+                                        help="31001 = Sage 50 2024. Voir la 1ʳᵉ ligne d'un .IMP de votre version.")
+            imp_country = st.text_input("Code pays", value="1", key="imp_country",
+                                        help="Canada = 1")
+        with iv2:
+            imp_tax1_name = st.text_input("Code taxe 1 (TPS)", value="GST", key="imp_t1n",
+                                          help="Nom EXACT de l'autorité de taxe TPS dans Sage 50 (souvent GST).")
+            imp_tax1_rate = st.number_input("Taux taxe 1 (%)", value=float(cyear.tps_rate),
+                                            step=0.5, key="imp_t1r")
+        with iv3:
+            imp_tax2_name = st.text_input("Code taxe 2 (TVQ)", value="QST", key="imp_t2n",
+                                          help="Nom EXACT de l'autorité de taxe TVQ dans Sage 50 (souvent QST/PST).")
+            imp_tax2_rate = st.number_input("Taux taxe 2 (%)", value=float(cyear.tvq_rate),
+                                            step=0.001, format="%.3f", key="imp_t2r")
+
+        pay1, pay2 = st.columns(2)
+        with pay1:
+            imp_pay_code = st.text_input("Code mode de paiement", value="", key="imp_payc",
+                                         help="Laisser vide pour une facture à recevoir (non payée / sur compte).")
+        with pay2:
+            imp_pay_method = st.text_input("Mode de paiement", value="", key="imp_paym",
+                                           help="Ex. « Payer plus tard ». Vide = sur compte.")
+
+        imp_bytes = sage50_salinvoices_imp(
+            records_sorted,
+            version=imp_version, country=imp_country,
+            tax1_name=imp_tax1_name, tax1_rate=imp_tax1_rate,
+            tax2_name=imp_tax2_name, tax2_rate=imp_tax2_rate,
+            payment_code=imp_pay_code, payment_method=imp_pay_method,
+        )
+        st.download_button(
+            f"⬇️ Exporter {len(records_sorted)} facture(s) en .IMP",
+            data=imp_bytes,
+            file_name=f"Factures_vente_{date.today().isoformat()}.imp",
+            mime="text/plain",
+            key="dl_invoices_imp",
+        )
+        with st.expander("👁️ Aperçu du fichier .IMP généré"):
+            st.code(imp_bytes.decode("cp1252")[:3000], language="text")
 
     gen = InvoiceGenerator()
     logo = config.get_logo()
