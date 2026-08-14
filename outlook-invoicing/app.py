@@ -96,12 +96,13 @@ def parse_sage50_csv(df: pd.DataFrame):
 _SAGE50_CUSTOMERS_HEADER = "33101,3,Customers"
 
 
-def sage50_customers_export(clients: List[Client]) -> bytes:
+def sage50_customers_export(clients: List[Client], header: str = _SAGE50_CUSTOMERS_HEADER) -> bytes:
     """
     Génère un fichier d'importation natif Sage 50 Canada pour les enregistrements Clients.
 
     Format (validé sur un export réel Sage 50) :
-      - ligne 1 : en-tête de version « 33101,3,Customers »
+      - ligne 1 : en-tête de version (ex. « 33101,3,Customers ») — DOIT correspondre
+        à la version de Sage 50 installée, sinon « numéro de version non valide »
       - ligne 2 : vide
       - lignes suivantes : 15 champs positionnels entre guillemets + virgule finale
         1 Nom, 2 Contact, 3 Adresse 1, 4 Adresse 2, 5 Ville, 6 Province,
@@ -112,7 +113,7 @@ def sage50_customers_export(clients: List[Client]) -> bytes:
     def q(v: str) -> str:
         return '"' + (v or "").replace('"', '""') + '"'
 
-    lines = [_SAGE50_CUSTOMERS_HEADER, ""]
+    lines = [header.strip(), ""]
     for c in clients:
         fields = [
             c.name,          # 1  Nom du client
@@ -426,6 +427,8 @@ def page_calendar():
                         e.client_name = default_client
 
                 st.session_state.time_entries = filtered
+                # Forcer la reconstruction du tableau (même si les UID se répètent)
+                st.session_state.pop("entries_df", None)
 
                 # Anti-double facturation : décocher les événements déjà facturés
                 billed = get_config().get_billed_event_ids()
@@ -460,8 +463,42 @@ def page_calendar():
 
     # ── Tableau ───────────────────────────────────────────────────────
     sel_ids = st.session_state.selected_ids
-    selected = [e for e in entries if e.event_id in sel_ids]
+    billed_ids = get_config().get_billed_event_ids()
+    known_names = sorted(
+        {c.name for c in get_config().get_clients()} |
+        {e.client_name for e in entries if e.client_name}
+    )
+    client_options = known_names if known_names else None
+    ids = [e.event_id for e in entries]
 
+    def build_entries_df() -> pd.DataFrame:
+        return pd.DataFrame([
+            {
+                "✓": (e.event_id in st.session_state.selected_ids),
+                "Date": e.date.strftime("%Y-%m-%d"),
+                "Début": e.date.strftime("%H:%M"),
+                "Client": e.client_name,
+                "Description": e.description,
+                "Heures": float(e.hours),
+                "Déjà facturé": "⚠️ Oui" if e.event_id in billed_ids else "",
+            }
+            for e in entries
+        ])
+
+    def refresh_entries_df():
+        # Reconstruit le tableau depuis `entries` et change la clé du widget
+        # pour qu'il réinitialise son état (utilisé à l'import et après une
+        # action groupée : Tout sélectionner / désélectionner / Appliquer).
+        st.session_state["entries_df"] = build_entries_df()
+        st.session_state["entries_df_ids"] = ids
+        st.session_state["editor_rev"] = st.session_state.get("editor_rev", 0) + 1
+
+    # (Re)construire uniquement quand l'ensemble des événements change (nouvel import)
+    if (st.session_state.get("entries_df") is None
+            or st.session_state.get("entries_df_ids") != ids):
+        refresh_entries_df()
+
+    selected = [e for e in entries if e.event_id in sel_ids]
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total événements", len(entries))
     m2.metric("Sélectionnés", len(selected))
@@ -474,17 +511,15 @@ def page_calendar():
     with col_all:
         if st.button("Tout sélectionner"):
             st.session_state.selected_ids = {e.event_id for e in entries}
+            refresh_entries_df()
             st.rerun()
     with col_none:
         if st.button("Tout désélectionner"):
             st.session_state.selected_ids = set()
+            refresh_entries_df()
             st.rerun()
 
     # ── Assignation rapide du client aux lignes sélectionnées ────────
-    known_names = sorted(
-        {c.name for c in get_config().get_clients()} |
-        {e.client_name for e in entries if e.client_name}
-    )
     qa, qb, qc = st.columns([3, 2, 1])
     with qa:
         q_options = known_names + ["✏️ Nom personnalisé..."]
@@ -507,27 +542,14 @@ def page_calendar():
         if st.button("Appliquer", key="apply_client", use_container_width=True):
             if q_name:
                 for e in entries:
-                    if e.event_id in sel_ids:
+                    if e.event_id in st.session_state.selected_ids:
                         e.client_name = q_name
                 st.session_state.time_entries = entries
+                refresh_entries_df()
                 st.rerun()
 
-    client_options = known_names if known_names else None
-    billed_ids = get_config().get_billed_event_ids()
     edited = st.data_editor(
-        pd.DataFrame([
-            {
-                "✓": (e.event_id in sel_ids),
-                "Date": e.date.strftime("%Y-%m-%d"),
-                "Début": e.date.strftime("%H:%M"),
-                "Client": e.client_name,
-                "Description": e.description,
-                "Heures": e.hours,
-                "Déjà facturé": "⚠️ Oui" if e.event_id in billed_ids else "",
-                "_id": e.event_id,
-            }
-            for e in entries
-        ]).drop("_id", axis=1),
+        st.session_state["entries_df"],
         use_container_width=True,
         hide_index=True,
         column_config={
@@ -547,18 +569,22 @@ def page_calendar():
         },
         disabled=["Déjà facturé"],
         num_rows="fixed",
-        key="entries_editor",
+        key=f"entries_editor_{st.session_state['editor_rev']}",
     )
 
+    # Synchroniser les modifications directes (cases, client, heures) vers
+    # `entries` / `selected_ids` — SANS reconstruire le tableau (clé inchangée),
+    # ce qui évite que les cases décochées se recochent.
     if edited is not None:
+        edited_r = edited.reset_index(drop=True)
         new_sel = set()
-        for i, row in edited.iterrows():
-            if i < len(entries):
-                entries[i].client_name = str(row["Client"])
-                entries[i].description = str(row["Description"])
-                entries[i].hours = float(row["Heures"])
-                if row["✓"]:
-                    new_sel.add(entries[i].event_id)
+        for i in range(min(len(entries), len(edited_r))):
+            row = edited_r.iloc[i]
+            entries[i].client_name = str(row["Client"])
+            entries[i].description = str(row["Description"])
+            entries[i].hours = float(row["Heures"])
+            if bool(row["✓"]):
+                new_sel.add(entries[i].event_id)
         st.session_state.time_entries = entries
         st.session_state.selected_ids = new_sel
 
@@ -591,10 +617,24 @@ def page_clients():
             """,
             unsafe_allow_html=True,
         )
+        st.warning(
+            "⚠️ **Erreur « numéro de version non valide » ?** La 1ʳᵉ ligne du fichier doit "
+            "correspondre **exactement** à VOTRE version de Sage 50. Pour trouver la bonne :\n\n"
+            "1. Dans Sage 50 : **Fichier → Importer/Exporter → Exporter des enregistrements → "
+            "Clients** (exportez ne serait-ce qu'un client)\n"
+            "2. Ouvrez le fichier obtenu avec le **Bloc-notes**\n"
+            "3. Copiez **la toute première ligne** (ex. `33101,3,Customers`) et collez-la ci-dessous."
+        )
+        sage_header = st.text_input(
+            "Ligne de version Sage 50 (1ʳᵉ ligne du fichier)",
+            value=_SAGE50_CUSTOMERS_HEADER,
+            key="sage_cust_header",
+            help="Reprenez la 1ʳᵉ ligne d'un fichier exporté par VOTRE Sage 50.",
+        )
         if clients:
             st.download_button(
                 f"⬇️ Exporter {len(clients)} client(s) au format Sage 50 (.txt)",
-                data=sage50_customers_export(clients),
+                data=sage50_customers_export(clients, header=sage_header),
                 file_name=f"Clients_Sage50_{date.today().isoformat()}.txt",
                 mime="text/plain",
                 key="dl_sage50_clients",
