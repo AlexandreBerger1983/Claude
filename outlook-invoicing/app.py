@@ -784,15 +784,15 @@ def page_invoice():
     with oc3:
         notes = st.text_area("Notes / conditions", height=68)
 
-    # ── Options d'export Sage 50 (feuille de temps) ─────────────────
-    with st.expander("⚙️ Options d'export Sage 50 (feuille de temps)", expanded=False):
+    # ── Options d'export Sage 50 (Temps et facturation) ─────────────
+    with st.expander("⚙️ Options d'export Sage 50 (temps facturable à un client)", expanded=False):
         st.markdown(
             """
             <div class="step-box">
-            Format conforme au <b>gabarit d'importation officiel de Sage 50 Canada</b> —
-            colonnes <i>Nom, Date, Revenu, Heures, Pièces, Montant, Projet, Commentaire</i>.<br/>
-            Import dans Sage 50 : <b>Fichier → Importer/Exporter → Importer des enregistrements
-            → Feuille de temps</b>.
+            Ajout de temps <b>facturable</b> rattaché à un client (module
+            <i>Temps et facturation</i> de Sage 50 Canada).<br/>
+            Colonnes : <i>Type, Date, Employé, Client, Activité, Heures, Taux, Montant,
+            Description, Facturable</i>.
             </div>
             """,
             unsafe_allow_html=True,
@@ -800,19 +800,17 @@ def page_invoice():
         se1, se2 = st.columns(2)
         with se1:
             sage_employee = st.text_input(
-                "Nom de l'employé (colonne « Nom »)",
+                "Employé / consultant (colonne « Employé »)",
                 value=company.name,
                 key="sage_emp",
-                help="Doit correspondre EXACTEMENT au nom de l'employé dans Sage 50 "
-                     "(ex. « Julie Dupré » ou « Dupré, Julie »).",
+                help="Nom exact tel qu'enregistré dans Sage 50.",
             )
         with se2:
-            sage_revenu = st.text_input(
-                "Type de revenu (colonne « Revenu »)",
-                value="Salaire de base",
-                key="sage_revenu",
-                help="Nom exact du revenu configuré dans Sage 50 "
-                     "(ex. « Salaire de base », « Heures supplémentaires 1 »).",
+            sage_activity = st.text_input(
+                "Activité (colonne « Activité »)",
+                value="SERV",
+                key="sage_act",
+                help="Code/nom de l'activité de service dans Sage 50 (ex. SERV, CONSULT).",
             )
 
         sf1, sf2 = st.columns(2)
@@ -822,16 +820,14 @@ def page_invoice():
                 ["AAAA-MM-JJ", "MM-JJ-AAAA", "JJ-MM-AAAA",
                  "AAAA/MM/JJ", "MM/JJ/AAAA", "JJ/MM/AAAA"],
                 key="sage_datefmt",
-                help="Doit correspondre au format de date de votre Sage 50 (formats acceptés "
-                     "par le gabarit).",
+                help="Doit correspondre au format de date de votre Sage 50.",
             )
         with sf2:
-            sage_projet = st.checkbox(
-                "Mettre le client dans « Projet »",
-                value=True,
-                key="sage_projet",
-                help="Inscrit le nom du client dans la colonne Projet "
-                     "(ventilation par projet dans Sage 50).",
+            sage_decimal = st.selectbox(
+                "Décimales",
+                ["Virgule (3,50) — Windows français", "Point (3.50)"],
+                key="sage_dec",
+                help="La plupart des Sage 50 en français attendent la virgule.",
             )
 
     fmt_map = {
@@ -839,31 +835,36 @@ def page_invoice():
         "AAAA/MM/JJ": "%Y/%m/%d", "MM/JJ/AAAA": "%m/%d/%Y", "JJ/MM/AAAA": "%d/%m/%Y",
     }
     csv_date_fmt = fmt_map[sage_datefmt]
+    csv_dec = "," if sage_decimal.startswith("Virgule") else "."
 
-    # Colonnes exactes du gabarit officiel Sage 50 (feuille de temps)
-    SAGE_COLS = ["Nom", "Date", "Revenu", "Heures", "Pièces", "Montant", "Projet", "Commentaire"]
+    # Colonnes du temps facturable (module Temps et facturation Sage 50)
+    SAGE_COLS = ["Type", "Date", "Employé", "Client", "Activité",
+                 "Heures", "Taux", "Montant", "Description", "Facturable"]
 
-    def _hours(v: float) -> str:
-        # Décimales avec virgule (ex. 3,50), comme dans le gabarit Sage 50
-        return f"{v:.2f}".replace(".", ",")
+    def _num(v: float) -> str:
+        return f"{v:.2f}".replace(".", csv_dec)
 
     def sage_csv_bytes(client_entries: Dict[str, List[TimeEntry]]) -> bytes:
         rows = []
         for c_name, c_list in client_entries.items():
+            c_cl = config.get_client_by_name(c_name)
             for e in sorted(c_list, key=lambda x: x.date):
+                montant = round(e.hours * c_cl.hourly_rate, 2)
                 rows.append({
-                    "Nom":         sage_employee,
+                    "Type":        "TEMPS",
                     "Date":        e.date.strftime(csv_date_fmt),
-                    "Revenu":      sage_revenu,
-                    "Heures":      _hours(e.hours),
-                    "Pièces":      "",       # travail horaire, pas à la pièce
-                    "Montant":     "",       # revenu horaire : Sage 50 applique le taux de l'employé
-                    "Projet":      c_name if sage_projet else "",
-                    "Commentaire": e.description or "",
+                    "Employé":     sage_employee,
+                    "Client":      c_name,
+                    "Activité":    sage_activity,
+                    "Heures":      _num(e.hours),
+                    "Taux":        _num(c_cl.hourly_rate),
+                    "Montant":     _num(montant),
+                    "Description": e.description or "",
+                    "Facturable":  "Oui",
                 })
         df = pd.DataFrame(rows, columns=SAGE_COLS)
-        # Encodage Windows (CP1252) comme le gabarit Sage 50 ; séparateur virgule,
-        # les valeurs contenant une virgule (ex. « 3,50 ») sont automatiquement citées.
+        # Encodage Windows (CP1252) ; séparateur virgule, valeurs contenant une
+        # virgule (ex. « 3,50 ») automatiquement citées.
         return df.to_csv(index=False).encode("cp1252", errors="replace")
 
     st.markdown("---")
