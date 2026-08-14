@@ -90,6 +90,51 @@ def parse_sage50_csv(df: pd.DataFrame):
         })
     return clients, col_map
 
+
+# En-tête de version du format d'importation natif Sage 50 Canada (enregistrements Clients).
+# Repris tel quel d'un export réel Sage 50 ; « 33101 » = version du fichier Sage 50.
+_SAGE50_CUSTOMERS_HEADER = "33101,3,Customers"
+
+
+def sage50_customers_export(clients: List[Client]) -> bytes:
+    """
+    Génère un fichier d'importation natif Sage 50 Canada pour les enregistrements Clients.
+
+    Format (validé sur un export réel Sage 50) :
+      - ligne 1 : en-tête de version « 33101,3,Customers »
+      - ligne 2 : vide
+      - lignes suivantes : 15 champs positionnels entre guillemets + virgule finale
+        1 Nom, 2 Contact, 3 Adresse 1, 4 Adresse 2, 5 Ville, 6 Province,
+        7 Code postal, 8 Pays, 9 Tél. 1, 10 Tél. 2, 11 Téléc., 12 Courriel,
+        13 Site web, 14 Devise, 15 Modalités
+    Encodage Windows (CP1252), fins de ligne CRLF.
+    """
+    def q(v: str) -> str:
+        return '"' + (v or "").replace('"', '""') + '"'
+
+    lines = [_SAGE50_CUSTOMERS_HEADER, ""]
+    for c in clients:
+        fields = [
+            c.name,          # 1  Nom du client
+            c.name,          # 2  Contact (= nom, comme dans l'export Sage 50)
+            c.address,       # 3  Adresse ligne 1
+            "",              # 4  Adresse ligne 2
+            c.city,          # 5  Ville
+            "",              # 6  Province
+            c.postal_code,   # 7  Code postal
+            c.country,       # 8  Pays
+            "",              # 9  Téléphone 1
+            "",              # 10 Téléphone 2
+            "",              # 11 Télécopieur
+            c.email,         # 12 Courriel
+            "",              # 13 Site web
+            "CAD",           # 14 Devise
+            "Courant",       # 15 Modalités de paiement
+        ]
+        lines.append(",".join(q(f) for f in fields) + ",")
+    return ("\r\n".join(lines) + "\r\n").encode("cp1252", errors="replace")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Config page
 # ──────────────────────────────────────────────────────────────────────────────
@@ -532,6 +577,34 @@ def page_clients():
     st.markdown('<div class="main-title">👥 Gestion des Clients</div>', unsafe_allow_html=True)
     config = get_config()
     clients = config.get_clients()
+
+    # ── Export vers Sage 50 (format natif d'importation) ──────────────
+    with st.expander("📤 Exporter les clients vers Sage 50 Canada", expanded=False):
+        st.markdown(
+            """
+            <div class="step-box">
+            Crée un fichier au <b>format d'importation natif de Sage 50</b>
+            (avec la ligne de version que Sage 50 exige).<br/>
+            Dans Sage 50 : <b>Fichier → Importer/Exporter → Importer des enregistrements
+            → Clients</b>, puis choisissez ce fichier.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if clients:
+            st.download_button(
+                f"⬇️ Exporter {len(clients)} client(s) au format Sage 50 (.txt)",
+                data=sage50_customers_export(clients),
+                file_name=f"Clients_Sage50_{date.today().isoformat()}.txt",
+                mime="text/plain",
+                key="dl_sage50_clients",
+            )
+            st.caption(
+                "Champs exportés : nom, contact, adresse, ville, code postal, pays, "
+                "courriel, devise (CAD), modalités (Courant)."
+            )
+        else:
+            st.info("Ajoutez au moins un client avant d'exporter.")
 
     # ── Import Sage 50 ────────────────────────────────────────────────
     with st.expander("📥 Importer depuis Sage 50 Canada (CSV)", expanded=False):
