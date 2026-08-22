@@ -26,11 +26,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploiement:
+  # Job sans « environment » : les règles de protection de l'environnement
+  # github-pages bloquent un job AVANT sa première étape, donc l'activation de
+  # Pages doit se faire ici pour pouvoir réellement s'exécuter.
+  construction:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploiement.outputs.page_url }}
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
@@ -76,6 +76,16 @@ jobs:
         with:
           path: _site
 
+  # Seul ce job porte « environment: github-pages », comme l'exige
+  # actions/deploy-pages. Si les règles de protection de l'environnement
+  # refusent la branche, l'échec est isolé ici et le site a déjà été construit.
+  deploiement:
+    needs: construction
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
       - name: Déployer sur GitHub Pages
         id: deploiement
         uses: actions/deploy-pages@v4
