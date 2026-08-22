@@ -20,6 +20,9 @@ import RoomQuestionnaire from './RoomQuestionnaire'
 import { questionnaireForRoom, defaultRates, RATES_KEY } from '../../data/roomQuestionnaires'
 import { readStorage } from '../../hooks/useLocalStorage'
 import { QUOTE_VALIDITY_DAYS } from '../../data/legalTerms'
+import { costSummary, ADMIN_PROFIT_PCT } from '../../data/quoteCosting'
+import CostSummary from './CostSummary'
+import WorkChecklist from './WorkChecklist'
 import QuoteLegalFooter from '../quotes/QuoteLegalFooter'
 import clsx from 'clsx'
 
@@ -427,7 +430,7 @@ function StepWorks({ draft, update }) {
 
   // Lignes générées par le questionnaire détaillé (formulaire Oui/Non par
   // pièce, comme les soumissions papier) — ajoutées au devis de la pièce
-  const addFromQuestionnaire = (lines, notes) => {
+  const addFromQuestionnaire = (lines, notes, checklist = []) => {
     const stamp = Date.now()
     update('items', [...items, ...lines.map((l, i) => ({
       id: stamp + i + Math.random(),
@@ -438,7 +441,16 @@ function StepWorks({ draft, update }) {
       qty: String(+(l.qty).toFixed(1)),
       unitMat: String(+(l.unitMat || 0).toFixed(2)),
       unitLabor: String(+(l.unitLabor || 0).toFixed(2)),
+      // Corps de métier et prix plancher, repris du gabarit Excel
+      questionId: l.questionId ?? null,
+      trade: l.trade ?? null,
+      min: String(+(l.min || 0).toFixed(2)),
     }))])
+    // Mémorise la liste complète des travaux possibles et leur statut, pour
+    // imprimer la section « Inclus / Non-applicable » de la soumission.
+    if (checklist.length > 0) {
+      update('rooms', rooms.map(r => r.id === activeRoomId ? { ...r, checklist } : r))
+    }
     if (notes.length > 0) {
       const noteText = notes.map(n => `${activeRoom?.name ?? ''} — ${n}`).join('. ')
       update('notes', draft.notes ? `${draft.notes}\n${noteText}` : noteText)
@@ -769,6 +781,12 @@ function StepQuote({ draft, update, onSave }) {
   const [showAdjust, setShowAdjust] = useState(false)
   const [companySettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const totals = computeTotals(items, settings)
+  // Résumé par corps de métier, fidèle à la feuille « Calcul des coûts »
+  const summary = costSummary(items, settings.adminProfitPct ?? ADMIN_PROFIT_PCT)
+  const laborRate = { ...defaultRates(), ...readStorage(RATES_KEY, {}) }.laborRate || 0
+  const laborHours = laborRate > 0
+    ? items.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.unitLabor) || 0) / laborRate, 0)
+    : 0
 
   const byRoom = rooms
     .map(r => ({
@@ -786,7 +804,7 @@ function StepQuote({ draft, update, onSave }) {
         <p className="text-sm font-medium text-white/80">Prix total du devis, taxes incluses</p>
         <p className="text-4xl font-extrabold mt-1">{formatCurrency(totals.total)}</p>
         <p className="text-xs text-white/70 mt-2">
-          Travaux {formatCurrency(totals.subtotal)} + frais et marge {formatCurrency(totals.overhead + totals.profit + totals.contingency)} + taxes {formatCurrency(totals.tps + totals.tvq)}
+          Travaux {formatCurrency(totals.subtotal)} + admin et profit {formatCurrency(totals.adminProfit)} + taxes {formatCurrency(totals.tps + totals.tvq)}
         </p>
       </div>
 
@@ -815,16 +833,14 @@ function StepQuote({ draft, update, onSave }) {
           <SlidersHorizontal size={18} className="text-slate-400" />
           <div className="flex-1">
             <p className="font-semibold text-slate-700 text-sm">Ajuster ma marge et mes frais <span className="text-slate-400 font-normal">(facultatif)</span></p>
-            <p className="text-xs text-slate-400">Frais généraux {settings.overheadPct}% · Profit {settings.profitPct}% · Imprévus {settings.contingencyPct}%</p>
+            <p className="text-xs text-slate-400">Admin et profit {totals.adminProfitPct} % — comme le gabarit Excel</p>
           </div>
           <ChevronDown size={18} className={clsx('text-slate-400 transition-transform', showAdjust && 'rotate-180')} />
         </button>
         {showAdjust && (
           <div className="border-t border-slate-100 p-4 space-y-5">
             {[
-              { key: 'overheadPct', label: 'Frais généraux', desc: 'Camion, bureau, assurances, licence RBQ…', max: 30 },
-              { key: 'profitPct', label: 'Mon profit', desc: 'Ce que l\'entreprise garde sur ce contrat', max: 40 },
-              { key: 'contingencyPct', label: 'Coussin pour imprévus', desc: 'Surprises derrière les murs, hausse des prix…', max: 25 },
+              { key: 'adminProfitPct', label: 'Admin et profit', desc: 'Frais généraux, administration et marge — un seul taux, comme dans vos gabarits Excel', max: 50 },
             ].map(f => (
               <div key={f.key}>
                 <div className="flex items-center justify-between mb-1">
@@ -850,6 +866,11 @@ function StepQuote({ draft, update, onSave }) {
       </div>
 
       {/* ─── Le devis imprimable ─── */}
+      {/* Estimé des coûts par corps de métier — vue interne, jamais imprimée */}
+      <div className="no-print">
+        <CostSummary summary={summary} hours={laborHours} />
+      </div>
+
       <div id="devis" className="card">
         <div className="flex flex-wrap justify-between gap-4 mb-6 pb-5 border-b border-slate-200">
           <div>
@@ -924,8 +945,8 @@ function StepQuote({ draft, update, onSave }) {
               <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Frais généraux, marge et imprévus</span>
-              <span className="font-medium">{formatCurrency(totals.overhead + totals.profit + totals.contingency)}</span>
+              <span className="text-slate-500">Admin et profit ({totals.adminProfitPct} %)</span>
+              <span className="font-medium">{formatCurrency(totals.adminProfit)}</span>
             </div>
             <div className="flex justify-between text-sm font-semibold border-t border-slate-200 pt-1.5">
               <span>Avant taxes</span>
@@ -952,6 +973,8 @@ function StepQuote({ draft, update, onSave }) {
             <p>{draft.notes}</p>
           </div>
         )}
+
+        <WorkChecklist rooms={rooms} />
 
         <QuoteLegalFooter companyName={companySettings.companyName} signatoryName={companySettings.ownerName} />
       </div>

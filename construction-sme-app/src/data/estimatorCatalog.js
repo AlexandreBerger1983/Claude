@@ -388,11 +388,10 @@ export const CATEGORY_META = {
   'Divers':                { emoji: '📦', desc: 'Nettoyage, benne, gestion' },
 }
 
-// Markups par défaut
+// Marge par défaut. Le gabarit Excel de l'entreprise n'applique qu'un seul
+// taux « Admin et Profit » (20 %) plutôt que plusieurs pourcentages composés.
 export const DEFAULT_SETTINGS = {
-  overheadPct: 12,       // Frais généraux
-  profitPct: 15,         // Marge bénéficiaire
-  contingencyPct: 5,     // Contingences
+  adminProfitPct: 20,
   tpsPct: 5,
   tvqPct: 9.975,
 }

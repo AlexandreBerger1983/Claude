@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { X, ClipboardList, ChevronDown, Settings2 } from 'lucide-react'
 import { formatCurrency } from '../../utils/formatters'
+import { tradeForQuestion, lineAmount } from '../../data/quoteCosting'
 import clsx from 'clsx'
 
 // Prix d'une question : calculé automatiquement, mais modifiable d'un clic
@@ -87,10 +88,21 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
       },
     }))
 
-  // Lignes générées + notes d'information, recalculées en direct
-  const { lines, notes, total } = useMemo(() => {
+  // Lignes générées + notes d'information, recalculées en direct.
+  // `checklist` retient TOUS les travaux possibles avec leur statut, pour
+  // reproduire la feuille « Formulaire soumission » du gabarit Excel, qui
+  // énumère chaque travail en le marquant « Inclus » ou « Non-applicable ».
+  const { lines, notes, total, checklist } = useMemo(() => {
     const lines = []
     const notes = []
+    const checklist = []
+    // Chaque ligne porte l'identifiant de sa question : c'est lui qui permet
+    // de la ventiler ensuite dans le bon corps de métier (voir quoteCosting).
+    const stamp = (line, question) => ({
+      ...line,
+      questionId: question.id,
+      trade: line.trade ?? tradeForQuestion(question.id),
+    })
     for (const section of questionnaire.sections) {
       for (const question of section.questions) {
         const ans = answers[question.id]
@@ -99,11 +111,13 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           if (val && String(val).trim()) notes.push(`${question.label} : ${val}`)
           continue
         }
-        if (!ans?.yes) continue
+        const included = !!ans?.yes
+        checklist.push({ id: question.id, label: question.label, section: section.title, included })
+        if (!included) continue
         const override = parseFloat(overrides[question.id])
         if (!Number.isNaN(override) && overrides[question.id] !== '') {
           // prix ajusté à la main : une seule ligne au montant choisi
-          if (override > 0) lines.push({ description: question.label, qty: 1, unit: 'forfait', unitMat: override, unitLabor: 0 })
+          if (override > 0) lines.push(stamp({ description: question.label, qty: 1, unit: 'forfait', unitMat: override, unitLabor: 0 }, question))
           continue
         }
         const values = ans.values ?? defaultsFor(question)
@@ -112,12 +126,12 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           parsed[inp.name] = inp.type === 'number' ? (parseFloat(values[inp.name]) || 0) : values[inp.name]
         }
         for (const line of question.lines(parsed)) {
-          if ((line.qty || 0) > 0 && ((line.unitMat || 0) > 0 || (line.unitLabor || 0) > 0)) lines.push(line)
+          if ((line.qty || 0) > 0 && ((line.unitMat || 0) > 0 || (line.unitLabor || 0) > 0)) lines.push(stamp(line, question))
         }
       }
     }
-    const total = lines.reduce((s, l) => s + l.qty * ((l.unitMat || 0) + (l.unitLabor || 0)), 0)
-    return { lines, notes, total }
+    const total = lines.reduce((s, l) => s + lineAmount(l), 0)
+    return { lines, notes, total, checklist }
   }, [answers, overrides, questionnaire])
 
   const yesCount = Object.values(answers).filter(a => a.yes).length
@@ -272,7 +286,7 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           <div className="flex items-center gap-3">
             <button onClick={onClose} className="btn-secondary flex-1 sm:flex-initial justify-center">Annuler</button>
             <button
-              onClick={() => { onSubmit(lines, notes); onClose() }}
+              onClick={() => { onSubmit(lines, notes, checklist); onClose() }}
               disabled={lines.length === 0}
               className={clsx('btn-primary flex-1 sm:flex-initial justify-center', lines.length === 0 && 'opacity-40 cursor-not-allowed')}
             >
