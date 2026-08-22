@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Johnny-Mow - Connexion</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .login-wrap { min-height:80vh; display:flex; align-items:center; justify-content:center; }
+    .login-card {
+      background:var(--surface); border:1px solid var(--border); border-radius:16px;
+      padding:32px; width:min(360px, 90vw); text-align:center;
+    }
+    .login-card h1 { color:var(--accent); margin-bottom:6px; }
+    .login-card p  { color:var(--text-muted); font-size:0.85rem; margin-bottom:20px; }
+    .login-card input {
+      width:100%; padding:12px; margin-bottom:12px; border-radius:8px;
+      border:1px solid var(--border); background:var(--surface2); color:var(--text);
+      font-size:0.95rem;
+    }
+    .login-card button { width:100%; padding:14px; font-size:1rem; }
+    .login-error {
+      background:#dc262622; border:1px solid var(--danger); color:var(--danger);
+      border-radius:8px; padding:10px; font-size:0.85rem; margin-bottom:14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login-card" method="POST" action="/login">
+      <h1>🤖 Johnny-Mow</h1>
+      <p>Accès sécurisé au robot</p>
+      {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+      <input type="text" name="username" placeholder="Utilisateur" autocomplete="username" required autofocus>
+      <input type="password" name="password" placeholder="Mot de passe" autocomplete="current-password" required>
+      <button type="submit" class="btn-success">Se connecter</button>
+    </form>
+  </div>
+</body>
+</html>

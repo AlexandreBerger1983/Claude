@@ -1,0 +1,236 @@
+# Configuration du Robot Tondeuse / Poubelles
+# Copier ce fichier en robot.yaml et adapter au câblage réel
+
+robot:
+  name: "Johnny-Mow"
+
+# --- Moteurs de déplacement ---
+motors:
+  left:
+    in1: 17   # GPIO BCM
+    in2: 27
+    pwm: 18
+  right:
+    in1: 22
+    in2: 23
+    pwm: 24
+  max_speed: 80        # % PWM max en mode manuel (0-100)
+  ramp_time: 0.1       # secondes pour atteindre la vitesse cible
+
+# --- Lame de tonte ---
+blade:
+  pin: 25              # GPIO signal ESC
+  min_pulse: 1000      # µs (arrêt)
+  max_pulse: 2000      # µs (pleine puissance)
+  startup_speed: 60    # % au démarrage
+  full_speed: 85       # % en tonte
+
+# --- Bras robotiques (servos via PCA9685 sur I2C) ---
+arms:
+  i2c_address: 0x40
+  pwm_frequency: 50    # Hz
+
+  left:
+    shoulder: 0        # canal PCA9685
+    elbow: 1
+    wrist: 2
+    gripper: 3
+    # Angles en degrés
+    home:    [90, 45, 90, 0]
+    reach:   [45, 90, 90, 0]
+    grasp:   [45, 90, 90, 60]
+    lift:    [90, 45, 90, 60]
+
+  right:
+    shoulder: 4
+    elbow: 5
+    wrist: 6
+    gripper: 7
+    home:    [90, 45, 90, 0]
+    reach:   [135, 90, 90, 0]
+    grasp:   [135, 90, 90, 60]
+    lift:    [90, 45, 90, 60]
+
+  servo_min: 150       # pulse min PCA9685
+  servo_max: 600       # pulse max PCA9685
+
+  # --- Tête mobile (nuque pan/tilt) - style Johnny 5 ---
+  head:
+    pan: 8             # canal PCA9685 (rotation gauche/droite)
+    tilt: 9            # canal PCA9685 (haut/bas)
+    home: [90, 90]     # position repos [pan, tilt] en degrés
+    pan_range:  [40, 140]   # butées mécaniques rotation
+    tilt_range: [65, 115]   # butées mécaniques inclinaison
+
+# --- Téléopération (imitation par webcam) ---
+teleop:
+  smoothing: 0.4       # lissage 0=figé .. 1=aucun filtre (réactif mais saccadé)
+  max_step_deg: 20     # déplacement max des servos par mise à jour (protection)
+  send_fps: 20         # fréquence d'envoi des poses depuis le navigateur
+  gripper_open: 0      # angle servo pince quand la main est ouverte
+  gripper_closed: 70   # angle servo pince quand la main est fermée (poing)
+
+# --- Capteurs ultrasons HC-SR04 ---
+sensors:
+  ultrasonic:
+    front:
+      trigger: 5
+      echo: 6
+    rear:
+      trigger: 13
+      echo: 19
+    left:
+      trigger: 26
+      echo: 20
+    right:
+      trigger: 21
+      echo: 16
+  obstacle_distance: 40  # cm - distance d'arrêt
+  blade_stop_distance: 30  # cm - arrêt lame
+
+  emergency_button: 4    # GPIO bouton d'arrêt d'urgence
+  bumper: [12, 7]        # GPIO micro-switches pare-chocs (contact = masse)
+  rain_sensor: 8         # GPIO capteur de pluie (sortie numérique, 0 = pluie)
+
+# --- Caméra (montée sur la tête pan/tilt, suit les mouvements de tête) ---
+camera:
+  enabled: true
+
+  # Source : "wyze_rtsp" (caméra Wyze), "picamera" (caméra officielle Pi), "sim"
+  source: "wyze_rtsp"
+
+  # --- Caméra Wyze Cam v3 / Pan v3 ---
+  # Deux façons d'obtenir une URL RTSP (voir docs/camera_wyze.md) :
+  #  1. Firmware RTSP officiel Wyze  → rtsp://user:pass@IP_CAM/live
+  #  2. docker-wyze-bridge sur le Pi → rtsp://IP_DU_PI:8554/nom-camera
+  rtsp_url: "rtsp://user:password@192.168.1.50/live"
+  reconnect_delay: 3.0   # secondes avant reconnexion si le flux tombe
+
+  resolution: [640, 480] # utilisé seulement pour source "picamera"
+  framerate: 15
+  stream_quality: 75     # qualité JPEG 0-100 (réduire si latence)
+
+# --- Batterie & retour à la base (Bloc 3) ---
+battery:
+  enabled: true
+  i2c_address: 0x40         # INA219 (différent du PCA9685 si sur même bus : 0x41)
+  shunt_ohms: 0.1
+  cells: 3                  # pack LiPo 3S (ou 4)
+  poll_interval: 30         # secondes entre mesures
+  return_threshold: 25      # % → retour à la base de recharge
+  shutdown_threshold: 12    # % → arrêt d'urgence
+  dock: {lat: 45.5019, lon: -73.5675}   # position GPS de la station de charge
+
+# --- Sécurité sans surveillance (Bloc 2) ---
+safety:
+  enabled: true
+  poll_interval: 0.2        # fréquence de vérification des dangers (s)
+  person_hold_time: 3.0     # maintien de l'alerte après dernière détection (s)
+
+  # Détection personne/animal par la caméra (coupe la lame)
+  person_detection:
+    enabled: true
+    min_confidence: 0.5     # seuil de confiance 0-1
+    classes: ["person", "cat", "dog"]
+    fps: 4                  # images/s analysées (l'inférence est coûteuse)
+    # Modèle EfficientDet-Lite à télécharger (voir docs/safety.md) :
+    model_path: "models/efficientdet_lite0.tflite"
+
+# --- Capteur d'inclinaison / soulèvement (MPU6050) ---
+imu:
+  enabled: true
+  i2c_bus: 1
+  i2c_address: 0x68
+  tilt_threshold: 35        # degrés (pitch ou roll) avant coupure lame
+
+# --- GPS RTK (u-blox ZED-F9P) ---
+gps:
+  enabled: true
+  port: "/dev/ttyUSB0"      # ou /dev/ttyACM0 selon le câble USB
+  baud: 115200
+
+  # Corrections NTRIP via internet (gratuit au Canada - NRCAN)
+  ntrip:
+    enabled: true
+    host: "rtk2go.com"       # serveur NTRIP public
+    port: 2101
+    # Trouver le mountpoint le plus proche sur : http://rtk2go.com:2101/SNIP::STATUS
+    # Au Québec, essayer : MANA, JOIE, LAVI, MTL1...
+    mountpoint: "MTL1"
+    user: "votre@email.com"  # s'enregistrer gratuitement sur rtk2go.com
+    password: ""
+
+# --- Serveur web ---
+web:
+  host: "0.0.0.0"
+  port: 5000
+  # Clé de signature des sessions. GÉNÉRER une valeur unique :
+  #   python -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "change-me-in-production"
+  watchdog_timeout: 3.0  # secondes sans commande avant arrêt auto
+
+  # --- Authentification (OBLIGATOIRE pour l'accès à distance) ---
+  auth:
+    username: "admin"
+    # Fournir SOIT password (haché au démarrage) SOIT password_hash (recommandé).
+    # Générer un hash :
+    #   python -c "from werkzeug.security import generate_password_hash as g; print(g('votre-mot-de-passe'))"
+    password: "changez-moi"
+    password_hash: ""       # ex: "scrypt:32768:8:1$..."
+
+  session_lifetime: 86400   # durée de session en secondes (24 h)
+  max_login_attempts: 5     # échecs avant verrouillage de l'IP
+  lockout_seconds: 300      # durée du verrouillage (5 min)
+
+  # Origines autorisées pour les WebSocket ("*" = toutes ; restreindre en prod)
+  # ex: ["https://robot.mon-domaine.ts.net"]
+  allowed_origins: "*"
+
+# --- Planificateur de tâches (Bloc 4) ---
+scheduler:
+  enabled: true
+  check_interval: 60        # vérification chaque minute
+  tasks:
+    mow:
+      enabled: true
+      days: ["mar", "ven"]  # mardi et vendredi
+      at: "10:00"
+      skip_if_rain: true    # reporte s'il pleut
+    trash_out:
+      enabled: true
+      days: ["mer"]         # veille de collecte
+      at: "19:00"
+    trash_in:
+      enabled: true
+      days: ["jeu"]         # jour de collecte, en soirée
+      at: "18:00"
+
+# --- Poubelles : points GPS (relevés via l'éditeur de zone) ---
+trash:
+  curb: {lat: 45.5017, lon: -73.5673}   # bord de rue
+  shed: {lat: 45.5019, lon: -73.5675}   # cabanon/rangement
+
+# --- Notifications à distance (Bloc 5) ---
+notifications:
+  enabled: false            # passer à true après configuration
+  channels: ["email"]       # "email", "sms", "webhook"
+  min_level: "info"         # info | warning | critical
+  cooldown_seconds: 60      # anti-spam par type d'événement
+  email:
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    username: "votre@gmail.com"
+    password: "mot-de-passe-application"  # mot de passe d'application Gmail
+    from: "votre@gmail.com"
+    to: "destinataire@email.com"
+    # Passerelle SMS de l'opérateur (ex. Telus/Koodo : num@msg.telus.com)
+    sms_to: "5145551234@msg.telus.com"
+  webhook:
+    url: ""                 # URL Discord/Slack/Telegram/domotique
+
+# --- Algorithme de tonte ---
+mowing:
+  strip_width: 30      # cm (largeur de passage)
+  turn_speed: 40       # % vitesse en virage
+  forward_speed: 60    # % vitesse en ligne droite
+  overlap: 5           # cm de chevauchement entre bandes

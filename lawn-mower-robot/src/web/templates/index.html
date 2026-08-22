@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Johnny-Mow - Contrôle</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header>
+    <h1>🤖 Johnny-Mow</h1>
+    <nav style="display:flex;gap:14px;align-items:center;">
+      <a href="/teleop" style="color:var(--accent2);text-decoration:none;font-size:0.9rem;">🕺 Imitation</a>
+      <a href="/zone" style="color:var(--accent2);text-decoration:none;font-size:0.9rem;">🗺️ Zone GPS</a>
+      <a href="/logout" style="color:var(--text-muted);text-decoration:none;font-size:0.9rem;">🔒 Déconnexion</a>
+      <div id="connection-indicator" class="disconnected">Déconnecté</div>
+    </nav>
+  </header>
+
+  <!-- Bandeau de sécurité (danger détecté) -->
+  <div id="safety-bar" class="hidden" style="background:#b45309;color:#fff;text-align:center;padding:10px;font-weight:700;"></div>
+
+  <!-- Bandeau d'urgence -->
+  <div id="emergency-bar" class="hidden">
+    ⛔ ARRÊT D'URGENCE ACTIVÉ
+    <button id="btn-reset-emergency">Réinitialiser</button>
+  </div>
+
+  <main>
+    <!-- Colonne gauche : statut + caméra -->
+    <section class="panel" id="panel-status">
+      <h2>État du robot</h2>
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="label">Mode</span>
+          <span id="status-mode" class="value">—</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Lame</span>
+          <span id="status-blade" class="value">—</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Obstacle</span>
+          <span id="status-obstacle" class="value">—</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Batterie</span>
+          <span id="status-battery" class="value">—</span>
+        </div>
+      </div>
+
+      <h3>Distances (cm)</h3>
+      <div class="sensor-compass">
+        <div class="sensor-slot north"><span class="dir">Avant</span><span id="dist-front">—</span></div>
+        <div class="sensor-slot east"><span class="dir">Dr.</span><span id="dist-right">—</span></div>
+        <div class="sensor-slot south"><span class="dir">Arr.</span><span id="dist-rear">—</span></div>
+        <div class="sensor-slot west"><span class="dir">Gch.</span><span id="dist-left">—</span></div>
+      </div>
+
+      <div id="video-container">
+        <img id="video-stream" src="/stream" alt="Flux caméra" onerror="this.style.display='none'">
+        <div id="no-video">Caméra non disponible</div>
+      </div>
+    </section>
+
+    <!-- Colonne centrale : contrôle déplacement -->
+    <section class="panel" id="panel-move">
+      <h2>Déplacement</h2>
+
+      <div id="joystick-container">
+        <canvas id="joystick" width="200" height="200"></canvas>
+      </div>
+
+      <div class="btn-row">
+        <button id="btn-stop" class="btn-danger btn-large">⏹ STOP</button>
+      </div>
+
+      <h3>Lame</h3>
+      <div class="btn-row">
+        <button id="btn-blade-start" class="btn-success">▶ Démarrer lame</button>
+        <button id="btn-blade-stop" class="btn-warning">⏹ Arrêter lame</button>
+      </div>
+
+      <h3>Tonte automatique</h3>
+      <div class="btn-row">
+        <button id="btn-mow-start" class="btn-success">🌿 Lancer tonte</button>
+        <button id="btn-mow-stop" class="btn-warning">⏸ Pause tonte</button>
+      </div>
+    </section>
+
+    <!-- Colonne droite : bras robotiques -->
+    <section class="panel" id="panel-arms">
+      <h2>Bras robotiques</h2>
+
+      <div class="arm-visual">
+        <div class="arm-diagram" id="arm-left-diagram">
+          <span class="arm-label">Bras Gauche</span>
+        </div>
+        <div class="arm-diagram" id="arm-right-diagram">
+          <span class="arm-label">Bras Droit</span>
+        </div>
+      </div>
+
+      <h3>Séquences poubelles</h3>
+      <div class="btn-grid">
+        <button class="arm-btn" data-cmd="pickup">
+          🗑️ Saisir poubelle
+        </button>
+        <button class="arm-btn" data-cmd="release">
+          📦 Poser poubelle
+        </button>
+        <button class="arm-btn" data-cmd="home">
+          🏠 Position repos
+        </button>
+      </div>
+
+      <h3>Poubelles automatiques (trajet complet)</h3>
+      <div class="btn-grid">
+        <button id="btn-trash-out" class="btn-success">🚛 Sortir au bord de rue</button>
+        <button id="btn-trash-in" class="btn-warning">🏡 Rentrer au cabanon</button>
+      </div>
+
+      <h3>Contrôle individuel</h3>
+      <div class="btn-grid">
+        <button class="arm-btn" data-cmd="left_reach">Bras G. - Saisie</button>
+        <button class="arm-btn" data-cmd="right_reach">Bras D. - Saisie</button>
+      </div>
+
+      <h3>Angles actuels</h3>
+      <div class="angles-display">
+        <div>
+          <strong>Gauche :</strong>
+          <span id="angles-left">—</span>
+        </div>
+        <div>
+          <strong>Droit :</strong>
+          <span id="angles-right">—</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <button id="btn-emergency" class="btn-emergency">⛔ ARRÊT D'URGENCE</button>
+  </footer>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/js/joystick.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
