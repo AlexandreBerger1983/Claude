@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Save, X, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Save, X, Plus, Trash2, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
-import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { useLocalStorage, readStorage } from '../../hooks/useLocalStorage'
+import { SAVED_KEY } from '../estimator/estimatorUtils'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import QuoteLegalFooter from './QuoteLegalFooter'
 import clsx from 'clsx'
@@ -24,6 +25,8 @@ export default function QuoteDetail() {
   const quote = data.quotes.find(q => q.id === Number(id))
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const [form, setForm] = useState(null) // copie de travail en mode édition
+  const [exporting, setExporting] = useState(null)
+  const [exportError, setExportError] = useState(null)
 
   if (!quote) return <div className="text-slate-500 p-8">Soumission introuvable</div>
 
@@ -75,6 +78,75 @@ export default function QuoteDetail() {
     setForm(null)
   }
 
+  // Données d'export. Le devis d'origine de l'estimateur (s'il existe encore)
+  // porte les corps de métier, les prix planchers et la liste des travaux
+  // « Inclus / Non-applicable » ; la soumission enregistrée, elle, ne contient
+  // que des prix finaux, marge comprise.
+  //
+  // On repart donc du devis d'origine quand il concorde encore avec la
+  // soumission. S'il a divergé (soumission modifiée depuis), on exporte les
+  // lignes de la soumission avec une marge de 0 % : sans cela, les 20 % du
+  // gabarit seraient appliqués une seconde fois et le fichier n'afficherait
+  // pas le même total que l'écran.
+  const buildExportData = () => {
+    const origine = readStorage(SAVED_KEY, []).find(d => d.number === quote.number)
+    let items, adminProfitPct, rooms
+    const pretaxOrigine = origine
+      ? origine.items.reduce((s, it) =>
+          s + (parseFloat(it.qty) || 0) * ((parseFloat(it.unitMat) || 0) + (parseFloat(it.unitLabor) || 0)), 0)
+        * (1 + (origine.settings?.adminProfitPct ?? 20) / 100)
+      : null
+
+    if (origine && Math.abs(pretaxOrigine - quote.subtotal) < 1) {
+      items = origine.items
+      adminProfitPct = origine.settings?.adminProfitPct ?? 20
+      rooms = origine.rooms
+    } else {
+      items = quote.items.map(it => ({
+        description: it.description,
+        qty: it.qty,
+        unit: it.unit,
+        unitMat: it.unitPrice,
+        unitLabor: 0,
+        min: 0,
+        trade: null,
+      }))
+      adminProfitPct = 0
+      rooms = origine?.rooms ?? []
+    }
+
+    return {
+      company: settings,
+      client: { name: quote.client, address: '', phone: '' },
+      title: quote.title,
+      number: quote.number,
+      date: formatDate(quote.date),
+      rooms,
+      items,
+      laborRate: 0,
+      adminProfitPct,
+      tpsPct: settings.tpsPct ?? 5,
+      tvqPct: settings.tvqPct ?? 9.975,
+      sousTotal: quote.subtotal,
+      tps: quote.tps,
+      tvq: quote.tvq,
+      total: quote.total,
+    }
+  }
+
+  const runExport = async (kind) => {
+    setExporting(kind)
+    setExportError(null)
+    try {
+      const mod = await import('../../utils/exportSoumission')
+      await (kind === 'excel' ? mod.exportExcel : mod.exportWord)(buildExportData())
+    } catch (e) {
+      setExportError(e?.message || 'erreur inconnue')
+    } finally {
+      setExporting(null)
+    }
+  }
+
   // valeurs affichées : la copie de travail en édition, sinon la soumission
   const view = editing ? form : quote
   const liveTotals = editing
@@ -105,6 +177,12 @@ export default function QuoteDetail() {
               <>
                 <button onClick={startEdit} className="btn-secondary"><Pencil size={15} /> Modifier</button>
                 <button onClick={() => window.print()} className="btn-secondary"><Printer size={15} /> Imprimer</button>
+                <button onClick={() => runExport('excel')} disabled={exporting !== null} className="btn-secondary disabled:opacity-50">
+                  <FileSpreadsheet size={15} /> {exporting === 'excel' ? 'Préparation…' : 'Excel'}
+                </button>
+                <button onClick={() => runExport('word')} disabled={exporting !== null} className="btn-secondary disabled:opacity-50">
+                  <FileText size={15} /> {exporting === 'word' ? 'Préparation…' : 'Word'}
+                </button>
                 {quote.status !== 'Envoyée' && quote.status !== 'Acceptée' && (
                   <button onClick={() => update('quotes', quote.id, { status: 'Envoyée' })} className="btn-secondary">
                     <Send size={15} /> Marquer envoyée
@@ -119,6 +197,11 @@ export default function QuoteDetail() {
             )}
           </div>
         </div>
+        {exportError && (
+          <p className="mt-2 text-sm text-red-600">
+            L'export n'a pas fonctionné : {exportError}. Réessayez, ou utilisez « Imprimer ».
+          </p>
+        )}
       </div>
 
       <div id="devis" className={clsx('card', editing && 'ring-2 ring-blue-300')}>

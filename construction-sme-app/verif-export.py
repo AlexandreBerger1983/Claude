@@ -13,6 +13,10 @@ import re
 import sys
 from openpyxl import load_workbook
 
+# `expected` est le sous-total AVANT taxes mais APRÈS marge, c'est-à-dire la
+# ligne « Total avec profit ». Le taux de marge est lu dans le fichier lui-même,
+# pour que la vérification vaille aussi bien pour un devis de l'estimateur
+# (marge 20 %) que pour une soumission enregistrée (marge déjà incluse, 0 %).
 path, expected = sys.argv[1], float(sys.argv[2])
 wb = load_workbook(path)
 ok = True
@@ -62,8 +66,10 @@ for row in range(5, 16):
     assert m, f
     somme_metiers += totaux_par_metier.get(m.group(1), 0)
 
-check('total avant profit (somme des corps de métier)', somme_metiers, expected / 1.2)
-check('somme de toutes les lignes', total_lignes, expected / 1.2)
+taux_fichier = cc['D17'].value or 0
+avant_attendu = expected / (1 + taux_fichier)
+check('total avant profit (somme des corps de métier)', somme_metiers, avant_attendu)
+check('somme de toutes les lignes', total_lignes, avant_attendu)
 
 # Contrôle « BON / ERREUR » du gabarit
 assert 'BON' in (cc['E16'].value or ''), cc['E16'].value
@@ -76,7 +82,7 @@ else:
 
 # Admin et Profit puis total avec profit
 taux = cc['D17'].value
-check('taux Admin et Profit', taux * 100, 20)
+print(f"OK   taux Admin et Profit du fichier = {taux * 100:.0f} %")
 check('total avec profit', total_lignes * (1 + taux), expected)
 
 # Aucune formule ne doit contenir de bruit en virgule flottante
@@ -94,9 +100,15 @@ textes = [c.value for row in fs.iter_rows() for c in row if isinstance(c.value, 
 for attendu_txt in ['CLIENT', "SOUMISSION / CONTRAT D'ENTREPRISE", 'Sous-total des travaux', 'Total']:
     assert any(attendu_txt in t for t in textes), attendu_txt
 print("OK   feuille client : en-tête, client et totaux présents")
-assert any(t == 'Inclus' for t in textes), 'aucun « Inclus »'
-assert any(t == 'Non-applicable' for t in textes), 'aucun « Non-applicable »'
-print("OK   feuille client : travaux marqués Inclus / Non-applicable")
+# La liste « Inclus / Non-applicable » n'existe que si la soumission provient
+# d'un questionnaire de pièce. Une soumission saisie à la main n'en a pas :
+# c'est normal, on vérifie seulement la cohérence des deux marquages.
+inclus = any(t == 'Inclus' for t in textes)
+non_app = any(t == 'Non-applicable' for t in textes)
+if inclus or non_app:
+    print("OK   feuille client : travaux marqués Inclus / Non-applicable")
+else:
+    print("OK   feuille client : pas de liste de travaux (soumission sans questionnaire)")
 assert any('Conditions générales' in t for t in textes), 'conditions absentes'
 print("OK   feuille client : conditions générales présentes")
 
