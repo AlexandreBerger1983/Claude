@@ -1,5 +1,11 @@
 name: Déploiement GitHub Pages (ConstructPro)
 
+# Publie l'application ConstructPro sur GitHub Pages.
+# Le dépôt contient plusieurs projets mais GitHub Pages n'offre qu'un seul
+# site par dépôt : l'application est donc servie dans un sous-dossier au nom
+# de la branche (même convention que .github/workflows/pages.yml), et la
+# racine du site redirige vers ce sous-dossier.
+#   https://<utilisateur>.github.io/Claude/claude/construction-sme-app-rc82di/
 on:
   push:
     branches:
@@ -14,19 +20,25 @@ permissions:
   pages: write
   id-token: write
 
+# Un seul déploiement à la fois ; on n'annule pas un déploiement en cours.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  build:
+  deploiement:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: construction-sme-app
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
     steps:
-      - name: Checkout
+      - name: Récupérer le dépôt
         uses: actions/checkout@v4
+
+      - name: Configurer Pages (bascule le site en mode « GitHub Actions »)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Installer Node.js
         uses: actions/setup-node@v4
@@ -37,22 +49,33 @@ jobs:
 
       - name: Installer les dépendances
         run: npm ci
+        working-directory: construction-sme-app
 
       - name: Construire l'application
         run: npm run build
+        working-directory: construction-sme-app
 
-      - name: Préparer l'artefact Pages
+      - name: Assembler le site (application dans un sous-dossier au nom de la branche)
+        run: |
+          chemin="claude/construction-sme-app-rc82di"
+          mkdir -p "_site/$chemin"
+          cp -r construction-sme-app/dist/. "_site/$chemin/"
+          # La racine du dépôt redirige vers l'application
+          cat > _site/index.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="fr"><head><meta charset="UTF-8">
+          <meta http-equiv="refresh" content="0; url=./claude/construction-sme-app-rc82di/">
+          <link rel="canonical" href="./claude/construction-sme-app-rc82di/">
+          <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>">
+          <title>ConstructPro</title></head>
+          <body><p>Redirection vers <a href="./claude/construction-sme-app-rc82di/">ConstructPro</a>…</p></body></html>
+          HTML
+
+      - name: Téléverser le site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: construction-sme-app/dist
+          path: _site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Déployer sur GitHub Pages
-        id: deployment
+        id: deploiement
         uses: actions/deploy-pages@v4

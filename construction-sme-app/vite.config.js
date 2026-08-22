@@ -3,9 +3,12 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Le site est publié sur GitHub Pages à la racine du dépôt "Claude"
-  // (https://<user>.github.io/Claude/), donc les assets doivent être
-  // référencés avec ce sous-chemin. Le routage applicatif utilise
-  // HashRouter (voir main.jsx), donc il ne dépend pas de "base".
-  base: '/Claude/',
+  // Le dépôt "Claude" contient plusieurs projets mais GitHub Pages n'offre
+  // qu'un seul site par dépôt. Chaque application est donc publiée dans un
+  // sous-dossier au nom de sa branche (convention déjà utilisée par
+  // .github/workflows/pages.yml pour l'app « Mobilité articulaire ») :
+  //   https://<user>.github.io/Claude/claude/construction-sme-app-rc82di/
+  // Les assets doivent porter ce préfixe. Le routage applicatif utilise
+  // HashRouter (voir main.jsx), donc lui ne dépend pas de "base".
+  base: '/Claude/claude/construction-sme-app-rc82di/',
 })
