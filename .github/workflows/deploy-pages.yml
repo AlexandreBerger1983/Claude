@@ -35,28 +35,11 @@ jobs:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      # actions/configure-pages n'agit que si Pages est désactivé : quand le
-      # site existe déjà en mode « Deploy from a branch », il ne change rien et
-      # le déploiement est ensuite refusé (« Deployments are only allowed from
-      # <branche> »). On force donc explicitement la source en mode workflow.
-      - name: Forcer la source Pages en mode « GitHub Actions »
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          code=$(curl -sS -o /tmp/pages.json -w '%{http_code}' -X PUT \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages" \
-            -d '{"build_type":"workflow"}')
-          echo "PUT /pages -> HTTP $code"
-          cat /tmp/pages.json || true
-          # 204/200 = modifié ; 409 = déjà dans cet état. Tout autre code est fatal.
-          case "$code" in
-            200|204|409) ;;
-            *) echo "::error::Impossible de basculer la source Pages en mode workflow (HTTP $code)"; exit 1 ;;
-          esac
-
+      # Note : la source du site Pages (« Deploy from a branch » ou « GitHub
+      # Actions ») ne peut pas être changée depuis un workflow — le GITHUB_TOKEN
+      # reçoit « 403 Resource not accessible by integration » sur
+      # PUT /repos/{repo}/pages, même avec la permission pages: write. Ce
+      # réglage doit être fait dans Settings → Pages → Build and deployment.
       - name: Configurer Pages
         uses: actions/configure-pages@v5
         with:
