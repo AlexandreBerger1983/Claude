@@ -295,7 +295,7 @@ export function buildQuestionnaires(R) {
         F.timeMat('sdb-escaliers', 'Protéger les escaliers', 2),
         q('sdb-armoires-enl', 'Enlever les armoires et en débarrasser',
           [
-            { name: 'type', label: "Type d'armoires", type: 'select', options: ['Modules', 'Encastrées'] },
+            { name: 'type', label: "Type d'armoires", type: 'select', options: ['Modules', 'Sur place'] },
             { name: 'hrs', label: 'Temps alloué pour enlever', type: 'number', unit: 'hrs', default: 4 },
             { name: 'hrsDechets', label: 'Temps pour sortir déchets jusque dans remorque', type: 'number', unit: 'hrs', default: 4 },
           ],
@@ -397,7 +397,7 @@ export function buildQuestionnaires(R) {
     { title: 'Électricité', questions: C.electricite('sdb') },
     {
       title: 'Comptoir',
-      questions: [F.info('sdb-comptoir', 'Type de comptoir', 'select', ['Stratifié', 'Quartz', 'Granit', 'Bois'])],
+      questions: [F.info('sdb-comptoir', 'Type de comptoir', 'select', ['Stratifié', 'Granite', 'Quartz', 'Béton', 'Céramique', 'Autre'])],
     },
     {
       title: 'Plomberie & Finition',
@@ -428,7 +428,7 @@ export function buildQuestionnaires(R) {
         F.timeMat('cui-escaliers', 'Protection des escaliers', 2),
         q('cui-armoires-enl', 'Enlever les armoires',
           [
-            { name: 'type', label: "Type d'armoires", type: 'select', options: ['Modules', 'Encastrées'] },
+            { name: 'type', label: "Type d'armoires", type: 'select', options: ['Modules', 'Sur place'] },
             { name: 'hrs', label: 'Temps alloué pour enlever', type: 'number', unit: 'hrs', default: 6 },
             { name: 'hrsDechets', label: 'Temps pour sortir déchets jusque dans remorque', type: 'number', unit: 'hrs', default: 6 },
           ],
@@ -511,7 +511,7 @@ export function buildQuestionnaires(R) {
     {
       title: 'Comptoir',
       questions: [
-        F.info('cui-comptoir', 'Type de comptoir', 'select', ['Stratifié', 'Quartz', 'Granit', 'Bois']),
+        F.info('cui-comptoir', 'Type de comptoir', 'select', ['Stratifié', 'Granite', 'Quartz', 'Béton', 'Céramique', 'Autre']),
         F.flat('cui-evier-temporaire', 'Fournir un évier temporaire durant les travaux', R.evierTempMo, R.evierTempMat),
       ],
     },

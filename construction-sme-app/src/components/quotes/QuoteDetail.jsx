@@ -5,6 +5,7 @@ import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
+import QuoteLegalFooter from './QuoteLegalFooter'
 import clsx from 'clsx'
 
 // Totaux calculés à partir des lignes (ou du sous-total manuel si aucune ligne)
@@ -330,13 +331,7 @@ export default function QuoteDetail() {
           </div>
         </div>
 
-        {/* Notes */}
-        <div className="mt-8 pt-6 border-t border-slate-100 text-xs text-slate-400 space-y-1">
-          <p>• Cette soumission est valide pour 30 jours à compter de la date d'émission.</p>
-          <p>• Les prix sont en dollars canadiens (CAD) et incluent la main-d'œuvre, les matériaux et la supervision.</p>
-          <p>• Des frais supplémentaires peuvent s'appliquer pour les travaux hors champ non spécifiés.</p>
-          <p>• Termes de paiement: 30% à l'acceptation, 40% mi-chantier, 30% à la livraison.</p>
-        </div>
+        <QuoteLegalFooter companyName={settings.companyName} signatoryName={settings.ownerName} />
       </div>
 
       {/* Barre d'enregistrement flottante en mode édition */}

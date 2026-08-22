@@ -19,6 +19,8 @@ import Stepper from './Stepper'
 import RoomQuestionnaire from './RoomQuestionnaire'
 import { questionnaireForRoom, defaultRates, RATES_KEY } from '../../data/roomQuestionnaires'
 import { readStorage } from '../../hooks/useLocalStorage'
+import { QUOTE_VALIDITY_DAYS } from '../../data/legalTerms'
+import QuoteLegalFooter from '../quotes/QuoteLegalFooter'
 import clsx from 'clsx'
 
 const STEPS = [
@@ -871,7 +873,7 @@ function StepQuote({ draft, update, onSave }) {
           <div className="text-right">
             <p className="text-xl font-bold text-brand-500">DEVIS</p>
             <p className="text-xs text-slate-500 mt-1">Fait le {today}</p>
-            <p className="text-xs text-slate-500">Valide 30 jours</p>
+            <p className="text-xs text-slate-500">Valide {QUOTE_VALIDITY_DAYS} jours</p>
           </div>
         </div>
 
@@ -951,15 +953,7 @@ function StepQuote({ draft, update, onSave }) {
           </div>
         )}
 
-        <div className="mt-6 pt-4 border-t border-slate-100 text-xs text-slate-400 space-y-1">
-          <p>• Prix en dollars canadiens. Devis valide 30 jours.</p>
-          <p>• Paiement : 30 % à l'acceptation, 40 % à la mi-chantier, 30 % à la fin des travaux.</p>
-          <p>• Tout travail imprévu (découvert en cours de chantier) sera discuté avec vous avant d'être fait.</p>
-          <div className="grid grid-cols-2 gap-8 pt-8">
-            <div className="border-t border-slate-300 pt-1 text-slate-500">Signature du client</div>
-            <div className="border-t border-slate-300 pt-1 text-slate-500">Signature de l'entrepreneur</div>
-          </div>
-        </div>
+        <QuoteLegalFooter companyName={companySettings.companyName} signatoryName={companySettings.ownerName} />
       </div>
 
       {/* Note champ libre */}
@@ -1044,7 +1038,7 @@ export default function EstimatorWizard() {
       clientId: clientObj?.id ?? null,
       client: draft.client.name,
       date: new Date().toISOString().slice(0, 10),
-      validUntil: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      validUntil: new Date(Date.now() + QUOTE_VALIDITY_DAYS * 86400000).toISOString().slice(0, 10),
       status: 'Brouillon',
       subtotal: totals.pretax,
       tps: totals.tps,
