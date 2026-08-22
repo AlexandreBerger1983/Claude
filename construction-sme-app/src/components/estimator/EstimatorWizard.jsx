@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Trash2, Check, Printer, Save,
   UserRound, Ruler, Hammer, ReceiptText, ChevronDown, Home, X,
-  SlidersHorizontal, PartyPopper, Pencil, Package, Search,
+  SlidersHorizontal, PartyPopper, Pencil, Package, Search, FileSpreadsheet, FileText,
 } from 'lucide-react'
 import FormModal from '../ui/FormModal'
 import { useData } from '../../store/DataContext'
@@ -783,6 +783,8 @@ function StepQuote({ draft, update, onSave }) {
   const totals = computeTotals(items, settings)
   // Résumé par corps de métier, fidèle à la feuille « Calcul des coûts »
   const summary = costSummary(items, settings.adminProfitPct ?? ADMIN_PROFIT_PCT)
+  const [exporting, setExporting] = useState(null)
+  const [exportError, setExportError] = useState(null)
   const laborRate = { ...defaultRates(), ...readStorage(RATES_KEY, {}) }.laborRate || 0
   const laborHours = laborRate > 0
     ? items.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.unitLabor) || 0) / laborRate, 0)
@@ -796,6 +798,38 @@ function StepQuote({ draft, update, onSave }) {
     .filter(g => g.items.length > 0)
 
   const today = new Date().toLocaleDateString('fr-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  // Données remises aux exports Excel / Word, dans le format des gabarits
+  const exportData = () => ({
+    company: companySettings,
+    client,
+    title: draft.projectType || 'Soumission',
+    number: '',
+    date: today,
+    rooms,
+    items,
+    laborRate,
+    adminProfitPct: totals.adminProfitPct,
+    tpsPct: settings.tpsPct,
+    tvqPct: settings.tvqPct,
+    sousTotal: totals.pretax,
+    tps: totals.tps,
+    tvq: totals.tvq,
+    total: totals.total,
+  })
+
+  const runExport = async (kind) => {
+    setExporting(kind)
+    setExportError(null)
+    try {
+      const mod = await import('../../utils/exportSoumission')
+      await (kind === 'excel' ? mod.exportExcel : mod.exportWord)(exportData())
+    } catch (e) {
+      setExportError(e?.message || 'erreur inconnue')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -823,6 +857,31 @@ function StepQuote({ draft, update, onSave }) {
           <Save size={20} /> Enregistrer le devis
         </button>
       </div>
+
+      {/* Export aux formats des gabarits de l'entreprise */}
+      <div className="grid grid-cols-2 gap-3 no-print">
+        <button
+          onClick={() => runExport('excel')}
+          disabled={exporting !== null}
+          className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-emerald-300 bg-white font-semibold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition-colors disabled:opacity-50"
+        >
+          <FileSpreadsheet size={18} />
+          {exporting === 'excel' ? 'Préparation…' : 'Télécharger en Excel'}
+        </button>
+        <button
+          onClick={() => runExport('word')}
+          disabled={exporting !== null}
+          className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-blue-300 bg-white font-semibold text-blue-700 hover:bg-blue-50 active:bg-blue-100 transition-colors disabled:opacity-50"
+        >
+          <FileText size={18} />
+          {exporting === 'word' ? 'Préparation…' : 'Télécharger en Word'}
+        </button>
+      </div>
+      {exportError && (
+        <p className="text-sm text-red-600 no-print">
+          L'export n'a pas fonctionné : {exportError}. Réessayez, ou utilisez « Imprimer / PDF ».
+        </p>
+      )}
 
       {/* Ajustements optionnels */}
       <div className="card p-0 overflow-hidden no-print">
