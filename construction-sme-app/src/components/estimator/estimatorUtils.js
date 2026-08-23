@@ -27,6 +27,51 @@ export const computeRoom = (room, unit) => {
   }
 }
 
+// ─── Base de mesure : toute la pièce, ou pieds linéaires ─────────────────────
+// Les dimensions sont saisies en pieds mais le catalogue est chiffré au mètre.
+// Ces fonctions expriment la quantité dans l'unité de l'utilisateur ET
+// convertissent le prix unitaire d'autant, pour que le total reste
+// rigoureusement identique au calcul métrique. Changer d'unité d'affichage ne
+// doit jamais changer un prix ; seul un changement de base le fait.
+export const M2_PAR_PI2 = 10.7639
+export const M_PAR_PI = 3.28084
+
+export const BASE_PIECE = 'piece'
+export const BASE_LINEAIRE = 'lineaire'
+
+// Facteur métrique → unité de l'utilisateur, et libellé de l'unité.
+export const basisUnit = (base, unit) => {
+  const lineaire = base === BASE_LINEAIRE
+  if (unit === 'pi') {
+    return lineaire
+      ? { facteur: M_PAR_PI, label: 'pi lin.' }
+      : { facteur: M2_PAR_PI2, label: 'pi²' }
+  }
+  return lineaire ? { facteur: 1, label: 'm lin.' } : { facteur: 1, label: 'm²' }
+}
+
+// Quantité et prix unitaires d'une ligne selon la base choisie.
+// `naturalKey` est la surface propre au travail (plancher, murs, plafond) :
+// « toute la pièce » respecte donc la nature du travail — un plancher se
+// mesure au plancher, une peinture de murs aux murs.
+export const applyMeasureBasis = ({ base, roomCalc, unit, naturalKey = 'floorArea', matM, laborM, waste = 1 }) => {
+  const { facteur, label } = basisUnit(base, unit)
+  // Le facteur de perte du catalogue ne s'applique qu'aux surfaces : on ne
+  // commande pas 10 % de longueur en trop sur un périmètre mesuré.
+  const brut = base === BASE_LINEAIRE
+    ? (roomCalc.perimeter ?? 0)
+    : (roomCalc[naturalKey] ?? roomCalc.floorArea ?? 0) * waste
+  const metrique = brut
+  return {
+    // Deux décimales : arrondir au dixième fausse sensiblement le total sur
+    // les petites valeurs métriques (11,15 m² arrondi à 11,2 → 2,60 $ d'écart).
+    qty: +(metrique * facteur).toFixed(2),
+    unit: label,
+    unitMat: +((matM || 0) / facteur).toFixed(4),
+    unitLabor: +((laborM || 0) / facteur).toFixed(4),
+  }
+}
+
 export const autoQtyForItem = (catalogItem, roomCalc) => {
   if (!catalogItem?.autoQty || !roomCalc) return null
   const val = roomCalc[catalogItem.autoQty] ?? 0

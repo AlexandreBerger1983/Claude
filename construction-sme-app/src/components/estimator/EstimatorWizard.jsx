@@ -14,6 +14,7 @@ import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefau
 import {
   DRAFT_KEY, SAVED_KEY, emptyDraft, computeRoom, autoQtyForItem,
   lineTotal, computeTotals, nextQuoteNumber, fromMeters,
+  applyMeasureBasis, basisUnit, BASE_PIECE, BASE_LINEAIRE,
 } from './estimatorUtils'
 import Stepper from './Stepper'
 import RoomQuestionnaire from './RoomQuestionnaire'
@@ -359,21 +360,70 @@ function StepWorks({ draft, update }) {
       update('items', items.filter(it => it.id !== existing.id))
       return
     }
-    const aqty = autoQtyForItem(catalogItem, roomCalc)
+    // Les travaux mesurés sur la pièce démarrent sur la base « toute la
+    // pièce », exprimée dans l'unité choisie à l'étape 2 : le sélecteur
+    // affiche donc dès l'ajout l'état réel de la ligne.
+    const mesurable = Boolean(catalogItem.autoQty)
+    const res = mesurable
+      ? applyMeasureBasis({
+          base: BASE_PIECE,
+          roomCalc,
+          unit,
+          naturalKey: catalogItem.autoQty,
+          matM: catalogItem.unitMat,
+          laborM: catalogItem.unitLabor,
+          waste: catalogItem.wasteFactor ?? 1,
+        })
+      : null
     update('items', [...items, {
       id: Date.now() + Math.random(),
       catalogId: catalogItem.id,
       description: catalogItem.label,
       roomId: activeRoomId,
-      unit: catalogItem.unit,
-      qty: aqty !== null && aqty > 0 ? String(aqty) : '1',
-      unitMat: String(catalogItem.unitMat),
-      unitLabor: String(catalogItem.unitLabor),
+      unit: res ? res.unit : catalogItem.unit,
+      qty: res && res.qty > 0 ? String(res.qty) : '1',
+      unitMat: String(res ? res.unitMat : catalogItem.unitMat),
+      unitLabor: String(res ? res.unitLabor : catalogItem.unitLabor),
+      basis: mesurable ? BASE_PIECE : null,
     }])
   }
 
   const updateItemQty = (id, qty) =>
     update('items', items.map(it => it.id === id ? { ...it, qty } : it))
+
+  // Base de mesure d'un travail : toute la pièce, ou les pieds linéaires
+  // (périmètre). La quantité est recalculée depuis les dimensions de la pièce
+  // et exprimée dans l'unité choisie à l'étape 2 ; le prix unitaire est
+  // converti d'autant, pour que passer des pieds aux mètres ne change jamais
+  // le total — seul le changement de base le fait.
+  const setItemBasis = (item, base) => {
+    const room = rooms.find(r => r.id === item.roomId)
+    if (!room) return
+    const cat = CATALOG.find(c => c.id === item.catalogId)
+    // Prix métriques d'origine, pour ne pas empiler les conversions si l'on
+    // bascule plusieurs fois d'une base à l'autre.
+    const facteurActuel = basisUnit(item.basis ?? BASE_PIECE, unit).facteur
+    const matM = cat ? cat.unitMat : (parseFloat(item.unitMat) || 0) * facteurActuel
+    const laborM = cat ? cat.unitLabor : (parseFloat(item.unitLabor) || 0) * facteurActuel
+
+    const res = applyMeasureBasis({
+      base,
+      roomCalc: computeRoom(room, unit),
+      unit,
+      naturalKey: cat?.autoQty ?? 'floorArea',
+      matM,
+      laborM,
+      waste: cat?.wasteFactor ?? 1,
+    })
+    update('items', items.map(it => it.id === item.id ? {
+      ...it,
+      basis: base,
+      qty: String(res.qty),
+      unit: res.unit,
+      unitMat: String(res.unitMat),
+      unitLabor: String(res.unitLabor),
+    } : it))
+  }
 
   const removeItem = (id) => update('items', items.filter(it => it.id !== id))
 
@@ -551,6 +601,29 @@ function StepWorks({ draft, update }) {
                   <p className="text-[10px] text-slate-400">
                     {formatCurrency(parseFloat(it.unitMat) || 0)} mat. + {formatCurrency(parseFloat(it.unitLabor) || 0)} M.O. / {it.unit}
                   </p>
+                  {/* Mesurer sur toute la pièce, ou au pied linéaire */}
+                  {it.basis != null && <div className="mt-1.5 inline-flex rounded-lg border border-slate-200 overflow-hidden">
+                    {[
+                      { base: BASE_PIECE, label: 'Toute la pièce' },
+                      { base: BASE_LINEAIRE, label: unit === 'pi' ? 'Pieds linéaires' : 'Mètres linéaires' },
+                    ].map(o => (
+                      <button
+                        key={o.base}
+                        onClick={() => setItemBasis(it, o.base)}
+                        className={clsx(
+                          'px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                          (it.basis ?? BASE_PIECE) === o.base
+                            ? 'bg-brand-500 text-white'
+                            : 'bg-white text-slate-500 hover:bg-slate-50',
+                        )}
+                        title={o.base === BASE_PIECE
+                          ? 'Quantité calculée sur la surface de la pièce'
+                          : 'Quantité calculée sur le périmètre de la pièce'}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-36">
