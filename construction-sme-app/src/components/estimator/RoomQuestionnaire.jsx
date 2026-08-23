@@ -66,6 +66,12 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
   // prix ajusté à la main pour une question (remplace le calcul automatique)
   const [overrides, setOverrides] = useState({})
   const [openSections, setOpenSections] = useState(() => ({ [questionnaire.sections[0]?.title]: true }))
+  // Base de mesure choisie pour un champ : « toute la pièce » (la mesure réelle
+  // de la pièce saisie à l'étape 2) ou « en partie » (on inscrit le nombre de
+  // pi² ou de pi. lin. réellement touché). Clé : `${questionId}:${champ}`.
+  const [measureModes, setMeasureModes] = useState({})
+  const modeKey = (question, inp) => `${question.id}:${inp.name}`
+  const modeOf = (question, inp) => measureModes[modeKey(question, inp)] ?? inp.modeDefaut ?? 'piece'
 
   const defaultsFor = (question) => {
     const v = {}
@@ -254,12 +260,39 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
                                     </select>
                                   ) : inp.type === 'number' ? (
                                     <div className="flex items-center gap-1.5">
+                                      {/* Quantité mesurée sur la pièce : toute la
+                                          pièce, ou une partie qu'on inscrit. */}
+                                      {inp.roomQty != null && (
+                                        <div className="flex rounded-lg overflow-hidden border border-slate-200 flex-shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setMeasureModes(m => ({ ...m, [modeKey(question, inp)]: 'piece' }))
+                                              setValue(question, inp.name, inp.roomQty)
+                                            }}
+                                            className={clsx('px-2 py-1 text-[11px] font-bold transition-colors',
+                                              modeOf(question, inp) === 'piece' ? 'bg-brand-500 text-white' : 'bg-white text-slate-400 hover:bg-brand-50')}
+                                          >
+                                            Toute la pièce
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setMeasureModes(m => ({ ...m, [modeKey(question, inp)]: 'partie' }))}
+                                            className={clsx('px-2 py-1 text-[11px] font-bold transition-colors border-l border-slate-200',
+                                              modeOf(question, inp) === 'partie' ? 'bg-brand-500 text-white' : 'bg-white text-slate-400 hover:bg-brand-50')}
+                                          >
+                                            En partie
+                                          </button>
+                                        </div>
+                                      )}
                                       <input
                                         type="number" min="0" step="0.5" inputMode="decimal"
                                         value={values[inp.name] ?? 0}
                                         onChange={e => setValue(question, inp.name, e.target.value)}
                                         onFocus={e => e.target.select()}
-                                        className="input w-24 py-1 text-sm text-right"
+                                        readOnly={inp.roomQty != null && modeOf(question, inp) === 'piece'}
+                                        className={clsx('input w-24 py-1 text-sm text-right',
+                                          inp.roomQty != null && modeOf(question, inp) === 'piece' && 'bg-slate-50 text-slate-500')}
                                       />
                                       <span className="text-xs text-slate-400 w-9">{inp.unit}</span>
                                     </div>

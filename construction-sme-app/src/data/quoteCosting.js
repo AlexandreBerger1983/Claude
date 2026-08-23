@@ -41,11 +41,17 @@ export const TRADES = [
 // fait le gabarit Excel pour tous les travaux de menuiserie générale.
 const TRADE_BY_SUFFIX = [
   [/-joints$/,                                              'joints'],
-  [/-peinture$/,                                            'peinture'],
+  // Peinture : le questionnaire la scinde en murs, plafond et boiseries.
+  [/-peinture(-murs|-plafond|-boiseries)?$/,                'peinture'],
   [/-(dosseret|ditra|membrane-imper|alcove)$/,              'ceramique'],
   [/-ceramique(-plancher|-murs)?$/,                         'ceramique'],
   [/-douche-ceramique$/,                                    'ceramique'],
   [/-plinthes-ceramique$/,                                  'ceramique'],
+  // Membrane et préparation du sous-plancher : travaux du céramiste, comme
+  // dans le gabarit Excel où ils suivent la ligne de céramique.
+  [/-membrane-plancher$/,                                   'ceramique'],
+  [/-sous-plancher$/,                                       'ceramique'],
+  [/-plancher-(flottant|ingenieur|tapis|beton-poli)$/,      'couvrePlancher'],
   [/-(autre-plancher|plancher)$/,                           'couvrePlancher'],
   [/-verre-(sans|avec)-porte$/,                             'verreDouche'],
   [/-(prises|lumieres)-\w+$/,                               'electricite'],

@@ -662,7 +662,7 @@ function StepWorks({ draft, update }) {
         onClick={() => setShowQuestionnaire(true)}
         className="w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-bold shadow-sm transition-colors"
       >
-        📋 Questionnaire détaillé — {questionnaireForRoom(activeRoom, questionnaireRates).title}
+        📋 Questionnaire détaillé — {questionnaireForRoom(activeRoom, questionnaireRates, unit).title}
       </button>
 
       {/* Ajouts manuels : sans passer par la superficie de la pièce */}
@@ -755,7 +755,7 @@ function StepWorks({ draft, update }) {
       {showQuestionnaire && activeRoom && (
         <RoomQuestionnaire
           room={activeRoom}
-          questionnaire={questionnaireForRoom(activeRoom, questionnaireRates)}
+          questionnaire={questionnaireForRoom(activeRoom, questionnaireRates, unit)}
           onSubmit={addFromQuestionnaire}
           onClose={() => setShowQuestionnaire(false)}
         />

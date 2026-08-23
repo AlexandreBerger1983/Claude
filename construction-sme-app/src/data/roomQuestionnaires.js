@@ -9,8 +9,35 @@
 // questionnaire lui-même.
 //
 // Unités : pc = pied carré, pl = pied linéaire, ch = chaque, hrs = heures.
+//
+// Chaque quantité mesurée sur la pièce offre le choix « Toute la pièce » ou
+// « En partie » : par défaut on prend la mesure réelle de la pièce saisie à
+// l'étape 2, et on n'inscrit un nombre de pi² / pi. lin. que si le travail ne
+// couvre pas la pièce au complet.
+
+import { computeRoom, M2_PAR_PI2, M_PAR_PI, fromMeters } from '../components/estimator/estimatorUtils.js'
 
 export const RATES_KEY = 'cp-questionnaire-tarifs'
+
+// ─── Mesures de la pièce, en unités du formulaire papier ─────────────────────
+// planchPc / plafondPc / mursPc en pieds carrés, perimetrePl en pieds
+// linéaires, hauteurPi la hauteur sous plafond (sert à convertir un mur mesuré
+// en pieds linéaires vers une superficie à peindre).
+export function roomMeasures(room, unit = 'pi') {
+  if (!room) return { planchPc: 0, plafondPc: 0, mursPc: 0, perimetrePl: 0, hauteurPi: 8 }
+  const c = computeRoom(room, unit)
+  const hauteur = fromMeters(
+    unit === 'pi' ? (parseFloat(room.height) || 0) * 0.3048 : (parseFloat(room.height) || 0),
+    'pi',
+  )
+  return {
+    planchPc: Math.round(c.floorArea * M2_PAR_PI2),
+    plafondPc: Math.round(c.ceilArea * M2_PAR_PI2),
+    mursPc: Math.round(c.wallArea * M2_PAR_PI2),
+    perimetrePl: Math.round(c.perimeter * M_PAR_PI),
+    hauteurPi: +(hauteur || 8).toFixed(1),
+  }
+}
 
 // ─── Grille de tarifs par défaut ──────────────────────────────────────────────
 // clé, libellé, unité, valeur par défaut, groupe (pour la page Paramètres)
@@ -31,12 +58,36 @@ export const RATE_DEFS = [
   { key: 'gypseNeufMo', label: 'Nouveau gypse posé (M.O.)', unit: '$/pc', def: 1.7, group: 'Construction & Murs' },
   { key: 'boisMursMat', label: 'Bois sur les murs (mat.)', unit: '$/pc', def: 3, group: 'Construction & Murs' },
   { key: 'boisMursMo', label: 'Bois sur les murs (M.O.)', unit: '$/pc', def: 2, group: 'Construction & Murs' },
+  { key: 'gypseParfait1Mat', label: 'Gypse 1/2" parfait 1 côté (mat.)', unit: '$/pc', def: 1.25, group: 'Construction & Murs' },
+  { key: 'gypseParfait2Mat', label: 'Gypse 1/2" parfait 2 côtés (mat.)', unit: '$/pc', def: 1.55, group: 'Construction & Murs' },
+  { key: 'gypseNovotechMat', label: 'Gypse parfait Novotech (mat.)', unit: '$/pc', def: 1.75, group: 'Construction & Murs' },
   { key: 'jointsMat', label: 'Tirage de joints (mat.)', unit: '$/pc', def: 0.15, group: 'Construction & Murs' },
   { key: 'jointsMo', label: 'Tirage de joints (M.O.)', unit: '$/pc', def: 1.1, group: 'Construction & Murs' },
   { key: 'peintureMat', label: 'Peinture (mat., peinture incluse)', unit: '$/pc', def: 0.33, group: 'Construction & Murs' },
   { key: 'peintureMo', label: 'Peinture (M.O.)', unit: '$/pc', def: 0.65, group: 'Construction & Murs' },
   { key: 'peinturePorteMat', label: 'Peinture de porte (mat.)', unit: '$/porte', def: 10, group: 'Construction & Murs' },
   { key: 'peinturePorteMo', label: 'Peinture de porte (M.O.)', unit: '$/porte', def: 50, group: 'Construction & Murs' },
+  { key: 'peintureBoiserieMat', label: 'Peinture boiseries et moulures (mat.)', unit: '$/pl', def: 0.6, group: 'Construction & Murs' },
+  { key: 'peintureBoiserieMo', label: 'Peinture boiseries et moulures (M.O.)', unit: '$/pl', def: 1.8, group: 'Construction & Murs' },
+
+  { key: 'plafondBoisMat', label: 'Plafond en bois (mat.)', unit: '$/pc', def: 4.5, group: 'Plafond' },
+  { key: 'plafondBoisMo', label: 'Plafond en bois (M.O.)', unit: '$/pc', def: 3.5, group: 'Plafond' },
+  { key: 'plafondTuilesMat', label: 'Plafond suspendu — tuiles (mat.)', unit: '$/pc', def: 2.8, group: 'Plafond' },
+  { key: 'plafondTuilesMo', label: 'Plafond suspendu — tuiles (M.O.)', unit: '$/pc', def: 2.2, group: 'Plafond' },
+
+  { key: 'ceramGrandFormatSupp', label: 'Supplément pose grand format 24x48 et + (M.O.)', unit: '$/pc', def: 1.5, group: 'Planchers' },
+  { key: 'flottantVinylMat', label: 'Vinyle clic (mat.)', unit: '$/pc', def: 3.5, group: 'Planchers' },
+  { key: 'flottantVinylMo', label: 'Vinyle clic (M.O.)', unit: '$/pc', def: 1.5, group: 'Planchers' },
+  { key: 'flottantBoisMat', label: 'Bois franc 3/4" (mat.)', unit: '$/pc', def: 8, group: 'Planchers' },
+  { key: 'flottantBoisMo', label: 'Bois franc 3/4" (M.O.)', unit: '$/pc', def: 2.5, group: 'Planchers' },
+  { key: 'ingenieurMat', label: 'Plancher ingénieur (mat.)', unit: '$/pc', def: 7, group: 'Planchers' },
+  { key: 'ingenieurColleMo', label: 'Plancher ingénieur — collé (M.O.)', unit: '$/pc', def: 3.5, group: 'Planchers' },
+  { key: 'ingenieurCloueMo', label: 'Plancher ingénieur — cloué (M.O.)', unit: '$/pc', def: 3, group: 'Planchers' },
+  { key: 'ingenieurDoubleMo', label: 'Plancher ingénieur — double encollage (M.O.)', unit: '$/pc', def: 4.5, group: 'Planchers' },
+  { key: 'tapisMat', label: 'Tapis mur à mur (mat.)', unit: '$/pc', def: 3, group: 'Planchers' },
+  { key: 'tapisMo', label: 'Tapis mur à mur (M.O.)', unit: '$/pc', def: 1.8, group: 'Planchers' },
+  { key: 'betonPoliMat', label: 'Béton poli (mat.)', unit: '$/pc', def: 2, group: 'Planchers' },
+  { key: 'betonPoliMo', label: 'Béton poli (M.O.)', unit: '$/pc', def: 7, group: 'Planchers' },
 
   { key: 'dosseretPoseMo', label: 'Pose céramique dosseret (M.O.)', unit: '$/pc', def: 6, group: 'Céramique & Revêtements' },
   { key: 'ceramFournirDosseret', label: 'Fournir céramique dosseret (mat.)', unit: '$/pc', def: 7, group: 'Céramique & Revêtements' },
@@ -68,6 +119,8 @@ export const RATE_DEFS = [
   { key: 'deplVentMoyen', label: 'Déplacer ventilateur — accès moyen (M.O.)', unit: '$', def: 320, group: 'Ventilation & Hotte' },
   { key: 'deplVentDifficile', label: 'Déplacer ventilateur — accès difficile (M.O.)', unit: '$', def: 450, group: 'Ventilation & Hotte' },
   { key: 'deplVentMat', label: 'Déplacer ventilateur (mat.)', unit: '$', def: 40, group: 'Ventilation & Hotte' },
+  { key: 'trappeVentMo', label: 'Déplacer/repositionner trappe de ventilation (M.O.)', unit: '$', def: 210, group: 'Ventilation & Hotte' },
+  { key: 'trappeVentMat', label: 'Déplacer/repositionner trappe de ventilation (mat.)', unit: '$', def: 45, group: 'Ventilation & Hotte' },
   { key: 'ureMat', label: "Boucher avec uréthane (mat.)", unit: '$', def: 15, group: 'Ventilation & Hotte' },
   { key: 'ureMo', label: "Boucher avec uréthane (M.O.)", unit: '$', def: 35, group: 'Ventilation & Hotte' },
   { key: 'sortieHotteMat', label: 'Nouvelle sortie de hotte (mat.)', unit: '$', def: 80, group: 'Ventilation & Hotte' },
@@ -142,10 +195,71 @@ export const defaultRates = () =>
 
 export const RATE_GROUPS = [...new Set(RATE_DEFS.map(r => r.group))]
 
+// ─── Choix transcrits des feuilles manuscrites ───────────────────────────────
+// Gypse : 1/2" par défaut (le 5/8 est barré sur la feuille), avec les finis
+// « parfait » 1 côté, 2 côtés et Novotech.
+export const GYPSE_TYPES = [
+  { label: '1/2" régulier', matKey: 'gypseNeufMat' },
+  { label: '1/2" parfait 1 côté', matKey: 'gypseParfait1Mat' },
+  { label: '1/2" parfait 2 côtés', matKey: 'gypseParfait2Mat' },
+  { label: 'Parfait Novotech', matKey: 'gypseNovotechMat' },
+  { label: '5/8" régulier', matKey: 'gypseNeufMat' },
+]
+
+export const PLAFOND_TYPES = [
+  { label: 'Gypse tiré et peint', matKey: 'gypseNeufMat', moKey: 'gypseNeufMo', joints: true },
+  { label: 'Gypse parfait Novotech', matKey: 'gypseNovotechMat', moKey: 'gypseNeufMo' },
+  { label: 'Bois', matKey: 'plafondBoisMat', moKey: 'plafondBoisMo' },
+  { label: 'Tuiles suspendues', matKey: 'plafondTuilesMat', moKey: 'plafondTuilesMo' },
+]
+
+// Membranes de plancher de la feuille : Ditra-Heat (plancher chauffant),
+// membrane nécessaire (insonorisante / découplage), ou aucune.
+export const MEMBRANE_TYPES = [
+  { label: 'Ditra-Heat (plancher chauffant)', matKey: 'ditraMat', moKey: 'ditraMo' },
+  { label: 'Membrane nécessaire (découplage)', matKey: 'membraneSousCeramMat', moKey: 'membraneSousCeramMo' },
+  { label: 'Aucune', aucune: true },
+]
+
+const ligneplafond = (R, a, prefixeDescription) => {
+  const p = PLAFOND_TYPES.find(x => x.label === a.type) ?? PLAFOND_TYPES[0]
+  const pc = a.pc || 0
+  if (pc <= 0) return []
+  return [
+    { description: `${prefixeDescription} — ${p.label.toLowerCase()}`, qty: pc, unit: 'pc', unitMat: R[p.matKey], unitLabor: R[p.moKey] },
+    ...(p.joints ? [{ description: `${prefixeDescription} — tirage de joints`, qty: pc, unit: 'pc', unitMat: R.jointsMat, unitLabor: R.jointsMo, trade: 'joints' }] : []),
+  ]
+}
+
 // ─── Fabriques de questions ───────────────────────────────────────────────────
 const q = (id, label, inputs, lines, extra = {}) => ({ id, label, inputs, lines, ...extra })
 
-const buildFactories = (R) => {
+// Champ de quantité mesurée sur la pièce. `cle` désigne la mesure concernée
+// (plancher, plafond, murs, périmètre) : le questionnaire propose alors
+// « Toute la pièce » — la vraie mesure de la pièce — ou « En partie », où l'on
+// inscrit le nombre de pi² ou de pi. lin. réellement touché.
+// `modeDefaut` vaut 'partie' pour les travaux qui ne couvrent jamais toute la
+// pièce (murs de douche, dosseret) : le choix reste offert, mais la valeur de
+// départ est la superficie habituelle du travail, pas celle de la pièce.
+const mesureChamp = (M, name, label, cle, defSiPasDeMesure = 0, modeDefaut = 'piece') => {
+  const dispo = (M?.[cle] ?? 0) > 0
+  return {
+    name, label, type: 'number',
+    unit: cle === 'perimetrePl' ? 'pl' : 'pc',
+    default: modeDefaut === 'partie' || !dispo ? defSiPasDeMesure : M[cle],
+    measure: cle,
+    modeDefaut,
+    roomQty: dispo ? M[cle] : null,
+  }
+}
+
+const buildFactories = (R, M) => {
+  // perPc / perPl mesurés sur la pièce
+  const perMesure = (id, label, matRate, laborRate, cle, defPc = 0, champLabel = 'Superficie', modeDefaut = 'piece') =>
+    q(id, label,
+      [mesureChamp(M, 'pc', champLabel, cle, defPc, modeDefaut)],
+      (a) => [{ description: label, qty: a.pc || 0, unit: cle === 'perimetrePl' ? 'pl' : 'pc', unitMat: matRate, unitLabor: laborRate }])
+
   const timeMat = (id, label, defH = 1, defM = 0) =>
     q(id, label,
       [
@@ -183,46 +297,162 @@ const buildFactories = (R) => {
       [{ name: 'val', label, type, options }],
       () => [], { infoOnly: true })
 
-  return { timeMat, flat, perPc, perPl, perCount, amount, info }
+  return { timeMat, flat, perPc, perPl, perCount, amount, info, perMesure, mesure: (name, label, cle, def, modeDefaut) => mesureChamp(M, name, label, cle, def, modeDefaut) }
 }
 
 // ─── Sections communes ────────────────────────────────────────────────────────
-const buildSectionsCommunes = (R, F) => ({
+const buildSectionsCommunes = (R, F, M) => ({
   demolition: (prefix, defaults = {}) => [
     q(`${prefix}-couvre-plancher`, 'Enlever le couvre-plancher existant',
       [
         { name: 'type', label: 'Type de couvre-plancher', type: 'select', options: ['Céramique', 'Bois franc', 'Flottant', 'Vinyle', 'Tapis'] },
-        { name: 'pc', label: 'Superficie à enlever', type: 'number', unit: 'pc', default: defaults.couvrePc ?? 100 },
+        F.mesure('pc', 'Superficie à enlever', 'planchPc', defaults.couvrePc ?? 100),
         { name: 'rangs', label: 'Nombre de rangs à enlever', type: 'number', unit: 'rangs', default: 1 },
       ],
       (a) => [{ description: `Enlever le couvre-plancher existant (${a.type || 'céramique'})`, qty: a.pc || 0, unit: 'pc', unitMat: 0, unitLabor: R.enlCouvrePlancher }]),
-    F.perPc(`${prefix}-contreplaque-enl`, "Enlever le ou les contre-plaqués jusqu'à la structure", 0, R.enlContreplaque, defaults.veneerPc ?? 100),
-    F.perPc(`${prefix}-gypse-murs-enl`, 'Enlever le gypse sur les murs aux endroits touchés', 0, R.enlGypseMurs, defaults.gypseMursPc ?? 320),
-    F.perPc(`${prefix}-gypse-plafond-enl`, 'Enlever le gypse du plafond aux endroits touchés', 0, R.enlGypsePlafond, defaults.gypsePlafondPc ?? 100),
-    F.perPl(`${prefix}-division-demolir`, 'Défaire une division en bois', 0, R.demolDivision, 8, 'Longueur de mur à démolir'),
-    F.perPc(`${prefix}-contreplaque-pose`, 'Poser un contre-plaqué 3/8 BC FIR sélect sur le plancher, vissé au 4" c/c', R.poseContreplaqueMat, R.poseContreplaqueMo, 100),
+    F.perMesure(`${prefix}-contreplaque-enl`, "Enlever le ou les contre-plaqués jusqu'à la structure", 0, R.enlContreplaque, 'planchPc', defaults.veneerPc ?? 100),
+    F.perMesure(`${prefix}-gypse-murs-enl`, 'Enlever le gypse sur les murs aux endroits touchés', 0, R.enlGypseMurs, 'mursPc', defaults.gypseMursPc ?? 320),
+    F.perMesure(`${prefix}-gypse-plafond-enl`, 'Enlever le gypse du plafond aux endroits touchés', 0, R.enlGypsePlafond, 'plafondPc', defaults.gypsePlafondPc ?? 100),
+    // Cloison intérieure : le formulaire papier demande d'inscrire combien de
+    // pieds linéaires, ou de prendre le périmètre complet de la pièce.
+    F.perMesure(`${prefix}-cloison-demolir`, 'Défaire une cloison intérieure (division en bois)', 0, R.demolDivision, 'perimetrePl', 8, 'Longueur de cloison à démolir'),
+    F.perMesure(`${prefix}-contreplaque-pose`, 'Poser un contre-plaqué 3/8 BC FIR sélect sur le plancher, vissé au 4" c/c', R.poseContreplaqueMat, R.poseContreplaqueMo, 'planchPc', 100),
     F.info(`${prefix}-entretoit`, "Accès à l'entretoît", 'select', ['Facile ou non applicable', 'Moyen', 'Difficile']),
   ],
+  // « Ossature et structure » : comme sur la feuille, chaque travail indique
+  // combien de pieds linéaires ou de pieds carrés quand ce n'est pas la pièce
+  // au complet.
   construction: (prefix) => [
-    F.perPl(`${prefix}-division-neuve`, 'Faire une nouvelle division en bois', R.divisionMat, R.divisionMo, 0, 'Longueur de mur à construire'),
+    F.perMesure(`${prefix}-cloison-neuve`, 'Faire une nouvelle cloison en bois (ossature et structure)', R.divisionMat, R.divisionMo, 'perimetrePl', 0, 'Longueur de cloison à construire'),
     F.timeMat(`${prefix}-fond-clouage`, 'Installer un fond de clouage', 3, 50),
-    F.perPc(`${prefix}-gypse-neuf`, 'Fournir et installer du nouveau gypse aux endroits touchés', R.gypseNeufMat, R.gypseNeufMo, 420),
-    F.perPc(`${prefix}-bois-murs`, 'Fournir et installer du bois sur les murs', R.boisMursMat, R.boisMursMo, 0),
+    // Gypse : épaisseur 1/2" par défaut, avec les finis « parfait » 1 côté,
+    // 2 côtés ou Novotech demandés sur la feuille.
+    q(`${prefix}-gypse-neuf`, 'Fournir et installer du nouveau gypse aux endroits touchés',
+      [
+        { name: 'type', label: 'Type de gypse', type: 'select', options: GYPSE_TYPES.map(g => g.label) },
+        F.mesure('pc', 'Superficie de gypse', 'mursPc', 420),
+      ],
+      (a) => {
+        const g = GYPSE_TYPES.find(x => x.label === a.type) ?? GYPSE_TYPES[0]
+        return [{
+          description: `Nouveau gypse aux endroits touchés — ${g.label}`,
+          qty: a.pc || 0, unit: 'pc',
+          unitMat: R[g.matKey] ?? R.gypseNeufMat, unitLabor: R.gypseNeufMo,
+        }]
+      }),
+    F.perMesure(`${prefix}-bois-murs`, 'Fournir et installer du bois sur les murs', R.boisMursMat, R.boisMursMo, 'mursPc', 0),
     q(`${prefix}-autre-revetement-murs`, 'Autre revêtement sur les murs',
       [
         { name: 'pose', label: 'Coûts pour cet autre revêtement — pose', type: 'number', unit: '$', default: 0 },
         { name: 'mat', label: 'Coûts pour cet autre revêtement — matériel', type: 'number', unit: '$', default: 0 },
       ],
       (a) => [{ description: 'Autre revêtement sur les murs', qty: 1, unit: 'forfait', unitMat: a.mat || 0, unitLabor: a.pose || 0 }]),
-    F.perPc(`${prefix}-joints`, 'Faire le tirage des joints de gypse prêt pour la peinture', R.jointsMat, R.jointsMo, 600),
-    q(`${prefix}-peinture`, 'Peindre murs, plafonds, portes et moulures — 2 couleurs (peinture incluse)',
+    F.perMesure(`${prefix}-joints`, 'Faire le tirage des joints de gypse prêt pour la peinture', R.jointsMat, R.jointsMo, 'mursPc', 600),
+  ],
+
+  // ─── Plafond ───────────────────────────────────────────────────────────────
+  // La feuille demande d'indiquer le nombre de pi² ou la pièce complète, et
+  // laisse la place à une 2e proposition à présenter au client.
+  plafond: (prefix) => [
+    q(`${prefix}-plafond`, 'Plafond — finition',
       [
-        { name: 'pc', label: 'Peinture gypse : superficie', type: 'number', unit: 'pc', default: 420 },
+        { name: 'type', label: 'Finition du plafond', type: 'select', options: PLAFOND_TYPES.map(p => p.label) },
+        F.mesure('pc', 'Superficie de plafond', 'plafondPc', 100),
+      ],
+      (a) => ligneplafond(R, a, 'Plafond')),
+    q(`${prefix}-plafond-prop2`, 'Plafond — 2e proposition à présenter au client',
+      [
+        { name: 'type', label: 'Finition proposée en option', type: 'select', options: PLAFOND_TYPES.map(p => p.label) },
+        F.mesure('pc', 'Superficie de plafond', 'plafondPc', 100),
+      ],
+      (a) => ligneplafond(R, a, 'Plafond — 2e proposition')),
+  ],
+
+  // ─── Plancher ──────────────────────────────────────────────────────────────
+  // Transcription de la feuille : type de plancher, format et membrane pour la
+  // céramique, plancher flottant, plancher ingénieur, tapis, béton poli, et
+  // préparation du sous-plancher.
+  plancher: (prefix, defaults = {}) => [
+    q(`${prefix}-plancher-ceramique`, 'Plancher — céramique',
+      [
+        { name: 'format', label: 'Format de la céramique', type: 'select', options: ['12x24', '24x24', '24x48', 'Autre'] },
+        { name: 'pose', label: 'Type de pose', type: 'select', options: ['Droite', 'Sur fret', 'Diagonale'] },
+        F.mesure('posePc', 'Céramique à poser', 'planchPc', defaults.plancherPc ?? 100),
+        { name: 'fournirPc', label: 'Céramique à fournir', type: 'number', unit: 'pc', default: 0 },
+      ],
+      (a) => {
+        const grand = a.format === '24x48' || a.format === 'Autre'
+        return [
+          {
+            description: `Pose de céramique au plancher (${a.format || '12x24'}, pose ${(a.pose || 'droite').toLowerCase()})`,
+            qty: a.posePc || 0, unit: 'pc',
+            unitMat: R.ceramPlancherMat,
+            unitLabor: R.ceramPlancherMo + (grand ? R.ceramGrandFormatSupp : 0),
+          },
+          ...(a.fournirPc > 0 ? [{ description: 'Fournir la céramique pour le plancher', qty: a.fournirPc, unit: 'pc', unitMat: R.ceramFournir, unitLabor: 0 }] : []),
+        ]
+      }),
+    q(`${prefix}-membrane-plancher`, 'Plancher — membrane sous la céramique',
+      [
+        { name: 'type', label: 'Membrane', type: 'select', options: MEMBRANE_TYPES.map(m => m.label) },
+        F.mesure('pc', 'Superficie de membrane', 'planchPc', defaults.plancherPc ?? 100),
+      ],
+      (a) => {
+        const m = MEMBRANE_TYPES.find(x => x.label === a.type) ?? MEMBRANE_TYPES[0]
+        if (m.aucune) return []
+        return [{ description: `Membrane sous la céramique — ${m.label}`, qty: a.pc || 0, unit: 'pc', unitMat: R[m.matKey], unitLabor: R[m.moKey] }]
+      }),
+    q(`${prefix}-plancher-flottant`, 'Plancher — flottant',
+      [
+        { name: 'type', label: 'Type de plancher flottant', type: 'select', options: ['Vinyle clic', 'Bois franc 3/4"'] },
+        F.mesure('pc', 'Superficie de plancher flottant', 'planchPc', defaults.plancherPc ?? 100),
+      ],
+      (a) => {
+        const bois = a.type === 'Bois franc 3/4"'
+        return [{
+          description: `Plancher flottant — ${(a.type || 'vinyle clic').toLowerCase()}`,
+          qty: a.pc || 0, unit: 'pc',
+          unitMat: bois ? R.flottantBoisMat : R.flottantVinylMat,
+          unitLabor: bois ? R.flottantBoisMo : R.flottantVinylMo,
+        }]
+      }),
+    q(`${prefix}-plancher-ingenieur`, 'Plancher — ingénieur',
+      [
+        { name: 'pose', label: 'Mode de pose', type: 'select', options: ['Double encollage', 'Collé', 'Cloué'] },
+        F.mesure('pc', 'Superficie de plancher ingénieur', 'planchPc', defaults.plancherPc ?? 100),
+      ],
+      (a) => [{
+        description: `Plancher ingénieur — ${(a.pose || 'double encollage').toLowerCase()}`,
+        qty: a.pc || 0, unit: 'pc', unitMat: R.ingenieurMat,
+        unitLabor: a.pose === 'Cloué' ? R.ingenieurCloueMo : a.pose === 'Collé' ? R.ingenieurColleMo : R.ingenieurDoubleMo,
+      }]),
+    F.perMesure(`${prefix}-plancher-tapis`, 'Plancher — tapis mur à mur', R.tapisMat, R.tapisMo, 'planchPc', defaults.plancherPc ?? 100),
+    F.perMesure(`${prefix}-plancher-beton-poli`, 'Plancher — béton poli', R.betonPoliMat, R.betonPoliMo, 'planchPc', defaults.plancherPc ?? 100),
+    F.perMesure(`${prefix}-sous-plancher`, 'Préparation du sous-plancher (auto-nivelant)', R.autonivMat, R.autonivMo, 'planchPc', defaults.plancherPc ?? 100),
+  ],
+
+  // ─── Peinture ──────────────────────────────────────────────────────────────
+  // Les murs se mesurent en pieds linéaires quand ce n'est qu'une partie de la
+  // pièce : la hauteur sous plafond convertit la longueur en superficie.
+  peinture: (prefix) => [
+    q(`${prefix}-peinture-murs`, 'Peinture — murs (2 couches, peinture incluse)',
+      [F.mesure('pl', 'Longueur de murs à peindre', 'perimetrePl', 40)],
+      (a) => [{
+        description: `Peinture des murs — ${a.pl || 0} pi. lin. × ${M.hauteurPi} pi de hauteur`,
+        qty: +((a.pl || 0) * M.hauteurPi).toFixed(1), unit: 'pc',
+        unitMat: R.peintureMat, unitLabor: R.peintureMo,
+      }]),
+    q(`${prefix}-peinture-plafond`, 'Peinture — plafond (2 couches, peinture incluse)',
+      [F.mesure('pc', 'Superficie de plafond à peindre', 'plafondPc', 100)],
+      (a) => [{ description: 'Peinture du plafond', qty: a.pc || 0, unit: 'pc', unitMat: R.peintureMat, unitLabor: R.peintureMo }]),
+    q(`${prefix}-peinture-boiseries`, 'Peinture — boiseries et portes',
+      [
+        F.mesure('pl', 'Longueur de boiseries et moulures', 'perimetrePl', 40),
         { name: 'portes', label: 'Nombre de portes à peindre', type: 'number', unit: 'ch', default: 0 },
       ],
       (a) => [
-        { description: 'Peinture murs et plafonds — 2 couleurs (peinture incluse)', qty: a.pc || 0, unit: 'pc', unitMat: R.peintureMat, unitLabor: R.peintureMo },
-        ...(a.portes > 0 ? [{ description: 'Peinture des portes', qty: a.portes, unit: 'unité', unitMat: R.peinturePorteMat, unitLabor: R.peinturePorteMo }] : []),
+        ...((a.pl || 0) > 0 ? [{ description: 'Peinture des boiseries et moulures', qty: a.pl, unit: 'pl', unitMat: R.peintureBoiserieMat, unitLabor: R.peintureBoiserieMo }] : []),
+        ...((a.portes || 0) > 0 ? [{ description: 'Peinture des portes', qty: a.portes, unit: 'unité', unitMat: R.peinturePorteMat, unitLabor: R.peinturePorteMo }] : []),
       ]),
   ],
   electricite: (prefix, extras = []) => [
@@ -244,10 +474,10 @@ const buildSectionsCommunes = (R, F) => ({
     q(`${prefix}-plinthes-bois`, 'Fournir et installer de la plinthe de bois au plancher',
       [
         { name: 'type', label: 'Type de plinthes de bois', type: 'text' },
-        { name: 'pl', label: 'Quantité de plinthes à poser', type: 'number', unit: 'pl', default: 48 },
+        F.mesure('pl', 'Quantité de plinthes à poser', 'perimetrePl', 48),
       ],
       (a) => [{ description: `Plinthes de bois au plancher${a.type ? ` (${a.type})` : ''}`, qty: a.pl || 0, unit: 'pl', unitMat: R.plinthesBoisMat, unitLabor: R.plinthesBoisMo }]),
-    F.perPl(`${prefix}-plinthes-ceramique`, 'Fournir et installer de la plinthe de céramique au plancher', R.plinthesCeramMat, R.plinthesCeramMo, 0),
+    F.perMesure(`${prefix}-plinthes-ceramique`, 'Fournir et installer de la plinthe de céramique au plancher', R.plinthesCeramMat, R.plinthesCeramMo, 'perimetrePl', 0, 'Quantité de plinthes à poser'),
     q(`${prefix}-chambranles`, 'Fournir et installer des chambranles pour la porte et fenêtre',
       [
         { name: 'type', label: 'Type de chambranles', type: 'text' },
@@ -281,9 +511,9 @@ const buildSectionsCommunes = (R, F) => ({
 })
 
 // ─── Construction des questionnaires avec une grille de tarifs ────────────────
-export function buildQuestionnaires(R) {
-  const F = buildFactories(R)
-  const C = buildSectionsCommunes(R, F)
+export function buildQuestionnaires(R, M = { planchPc: 0, plafondPc: 0, mursPc: 0, perimetrePl: 0, hauteurPi: 8 }) {
+  const F = buildFactories(R, M)
+  const C = buildSectionsCommunes(R, F, M)
 
   const SDB = [
     {
@@ -311,6 +541,9 @@ export function buildQuestionnaires(R) {
     {
       title: 'Ventilation',
       questions: [
+        // Ajout de ventilation (feuille manuscrite « Ajout Ventilation »)
+        F.flat('sdb-ventilateur-ajout', 'Ajout d’un ventilateur', R.ventMo, R.ventMat),
+        F.flat('sdb-trappe-ventilation', 'Déplacer ou repositionner une trappe de ventilation', R.trappeVentMo, R.trappeVentMat),
         F.flat('sdb-ventilateur', 'Installer un ventilateur de salle de bain', R.ventMo, R.ventMat),
         q('sdb-sortie-vent', 'Faire une nouvelle sortie pour le ventilateur',
           [{ name: 'type', label: 'Type de sortie à faire', type: 'select', options: ['Entretoit', 'Mur', 'Direct'] }],
@@ -335,48 +568,28 @@ export function buildQuestionnaires(R) {
           (a) => [{ description: `Réparer le revêtement extérieur (fourniture ${(a.fourniture || 'par nous').toLowerCase()})`, qty: 1, unit: 'forfait', unitMat: a.fourniture === 'Par client' ? 0 : R.reparRevMat, unitLabor: (a.hrs || 0) * R.laborRate }]),
       ],
     },
-    { title: 'Construction & Murs', questions: C.construction('sdb') },
+    { title: 'Ossature & Structure', questions: C.construction('sdb') },
+    { title: 'Plafond', questions: C.plafond('sdb') },
+    { title: 'Plancher', questions: C.plancher('sdb', { plancherPc: 100 }) },
+    { title: 'Peinture', questions: C.peinture('sdb') },
     {
-      title: 'Céramique & Revêtements',
+      title: 'Céramique & Revêtements muraux',
       questions: [
         q('sdb-dosseret', 'Faire la pose de la céramique entre les armoires',
           [
             { name: 'surface', label: 'Surface à faire en céramique', type: 'select', options: ['Dosseret', 'Autre'] },
-            { name: 'pc', label: 'Quantité de céramique à fournir', type: 'number', unit: 'pc', default: 0 },
+            F.mesure('pc', 'Quantité de céramique à fournir', 'mursPc', 0, 'partie'),
           ],
           (a) => [
             { description: `Pose de céramique — ${(a.surface || 'dosseret').toLowerCase()}`, qty: Math.max(a.pc || 0, 1), unit: 'pc', unitMat: 0, unitLabor: R.dosseretPoseMo },
             ...(a.pc > 0 ? [{ description: 'Fournir la céramique (dosseret)', qty: a.pc, unit: 'pc', unitMat: R.ceramFournirDosseret, unitLabor: 0 }] : []),
           ]),
-        q('sdb-ditra', 'Fournir et poser une membrane Ditraheat avec chauffage radiant',
-          [
-            { name: 'type', label: 'Type de membrane', type: 'select', options: ['Ditraheat', 'Autre'] },
-            { name: 'pc', label: 'Superficie de membrane à poser', type: 'number', unit: 'pc', default: 144 },
-          ],
-          (a) => [{ description: `Membrane ${a.type || 'Ditraheat'} avec chauffage radiant`, qty: a.pc || 0, unit: 'pc', unitMat: R.ditraMat, unitLabor: R.ditraMo }]),
-        q('sdb-ceramique-plancher', 'Faire la pose de la céramique sur le plancher',
-          [
-            { name: 'posePc', label: 'Céramique à poser', type: 'number', unit: 'pc', default: 100 },
-            { name: 'fournirPc', label: 'Céramique à fournir', type: 'number', unit: 'pc', default: 0 },
-            { name: 'autonivPc', label: 'Autoniveleur à mettre en place', type: 'number', unit: 'pc', default: 0 },
-            { name: 'format', label: 'Format de la céramique', type: 'text' },
-            { name: 'pose', label: 'Type de pose', type: 'text' },
-          ],
-          (a) => [
-            { description: `Pose de céramique au plancher${a.format ? ` (${a.format}${a.pose ? `, ${a.pose}` : ''})` : ''}`, qty: a.posePc || 0, unit: 'pc', unitMat: R.ceramPlancherMat, unitLabor: R.ceramPlancherMo },
-            ...(a.fournirPc > 0 ? [{ description: 'Fournir la céramique pour le plancher', qty: a.fournirPc, unit: 'pc', unitMat: R.ceramFournir, unitLabor: 0 }] : []),
-            ...(a.autonivPc > 0 ? [{ description: 'Fournir et mettre en place un autoniveleur', qty: a.autonivPc, unit: 'pc', unitMat: R.autonivMat, unitLabor: R.autonivMo }] : []),
-          ]),
-        q('sdb-autre-plancher', 'Installer un autre type de revêtement de plancher',
-          [
-            { name: 'type', label: 'Type de revêtement', type: 'select', options: ['Planchettes de vinyle', 'Bois franc', 'Flottant', 'Autre'] },
-            { name: 'pc', label: 'Superficie pour ce revêtement', type: 'number', unit: 'pc', default: 0 },
-          ],
-          (a) => [{ description: `Revêtement de plancher — ${(a.type || 'planchettes de vinyle').toLowerCase()}`, qty: a.pc || 0, unit: 'pc', unitMat: R.revPlancherMat, unitLabor: R.revPlancherMo }]),
-        F.perPc('sdb-membrane-imper', "Fournir et installer de la membrane imperméabilisante sur les murs", R.membraneImperMat, R.membraneImperMo, 90),
+        // Les revêtements de plancher sont regroupés dans l'onglet « Plancher »,
+        // pour ne jamais chiffrer deux fois le même plancher.
+        F.perMesure('sdb-membrane-imper', "Fournir et installer de la membrane imperméabilisante sur les murs", R.membraneImperMat, R.membraneImperMo, 'mursPc', 90, 'Superficie de membrane', 'partie'),
         q('sdb-ceramique-murs', 'Faire la pose de la céramique sur les murs de la douche et du bain',
           [
-            { name: 'posePc', label: 'Céramique à poser sur les murs', type: 'number', unit: 'pc', default: 90 },
+            F.mesure('posePc', 'Céramique à poser sur les murs', 'mursPc', 90, 'partie'),
             { name: 'fournirPc', label: 'Céramique à fournir', type: 'number', unit: 'pc', default: 0 },
           ],
           (a) => [
@@ -438,8 +651,10 @@ export function buildQuestionnaires(R) {
     },
     { title: 'Démolition', questions: C.demolition('cui', { couvrePc: 816, gypseMursPc: 600, gypsePlafondPc: 140 }) },
     {
-      title: 'Hotte de cuisine',
+      title: 'Ventilation & Hotte',
       questions: [
+        F.flat('cui-ventilateur-ajout', 'Ajout d’un ventilateur', R.ventMo, R.ventMat),
+        F.flat('cui-trappe-ventilation', 'Déplacer ou repositionner une trappe de ventilation', R.trappeVentMo, R.trappeVentMat),
         q('cui-sortie-hotte', 'Faire une nouvelle sortie pour hotte de cuisine',
           [{ name: 'type', label: 'Type de sortie à faire', type: 'select', options: ['Direct', 'Entretoit', 'Mur'] }],
           (a) => [{ description: `Nouvelle sortie de hotte (${(a.type || 'direct').toLowerCase()})`, qty: 1, unit: 'forfait', unitMat: R.sortieHotteMat, unitLabor: R.sortieHotteMo }]),
@@ -463,42 +678,23 @@ export function buildQuestionnaires(R) {
           (a) => [{ description: `Réparer le revêtement extérieur (fourniture ${(a.fourniture || 'par nous').toLowerCase()})`, qty: 1, unit: 'forfait', unitMat: a.fourniture === 'Par client' ? 0 : R.reparRevMat, unitLabor: (a.hrs || 0) * R.laborRate }]),
       ],
     },
-    { title: 'Construction & Murs', questions: C.construction('cui') },
+    { title: 'Ossature & Structure', questions: C.construction('cui') },
+    { title: 'Plafond', questions: C.plafond('cui') },
+    { title: 'Plancher', questions: C.plancher('cui', { plancherPc: 252 }) },
+    { title: 'Peinture', questions: C.peinture('cui') },
     {
-      title: 'Céramique & Planchers',
+      title: 'Céramique & Revêtements muraux',
       questions: [
         q('cui-dosseret', 'Céramique entre les armoires',
           [
             { name: 'surface', label: 'Surface à faire en céramique', type: 'select', options: ['Dosseret', 'Autre'] },
-            { name: 'pc', label: 'Quantité de céramique à fournir', type: 'number', unit: 'pc', default: 30 },
+            F.mesure('pc', 'Quantité de céramique à fournir', 'mursPc', 30, 'partie'),
           ],
           (a) => [
             { description: `Pose de céramique — ${(a.surface || 'dosseret').toLowerCase()}`, qty: Math.max(a.pc || 0, 1), unit: 'pc', unitMat: 0, unitLabor: R.dosseretPoseMo },
             ...(a.pc > 0 ? [{ description: 'Fournir la céramique (dosseret)', qty: a.pc, unit: 'pc', unitMat: R.ceramFournirDosseret, unitLabor: 0 }] : []),
           ]),
-        q('cui-membrane', 'Fournir et poser membrane sous céramique',
-          [
-            { name: 'type', label: 'Type de membrane', type: 'select', options: ['Insonorisante', 'Ditra', 'Autre'] },
-            { name: 'pc', label: 'Superficie de membrane à poser', type: 'number', unit: 'pc', default: 252 },
-          ],
-          (a) => [{ description: `Membrane sous céramique (${(a.type || 'insonorisante').toLowerCase()})`, qty: a.pc || 0, unit: 'pc', unitMat: R.membraneSousCeramMat, unitLabor: R.membraneSousCeramMo }]),
-        q('cui-ceramique-plancher', 'Céramique sur le plancher',
-          [
-            { name: 'posePc', label: 'Céramique au plancher à poser', type: 'number', unit: 'pc', default: 252 },
-            { name: 'fournirPc', label: 'Céramique au plancher à fournir', type: 'number', unit: 'pc', default: 0 },
-            { name: 'format', label: 'Format de céramique', type: 'text' },
-            { name: 'pose', label: 'Type de pose', type: 'text' },
-          ],
-          (a) => [
-            { description: `Pose de céramique au plancher${a.format ? ` (${a.format}${a.pose ? `, ${a.pose}` : ''})` : ''}`, qty: a.posePc || 0, unit: 'pc', unitMat: R.ceramPlancherMat, unitLabor: R.ceramPlancherMo },
-            ...(a.fournirPc > 0 ? [{ description: 'Fournir la céramique pour le plancher', qty: a.fournirPc, unit: 'pc', unitMat: R.ceramFournir, unitLabor: 0 }] : []),
-          ]),
-        q('cui-autre-plancher', 'Autre type de revêtement de plancher',
-          [
-            { name: 'type', label: 'Type de revêtement', type: 'select', options: ['Bois franc', 'Planchettes de vinyle', 'Flottant', 'Autre'] },
-            { name: 'pc', label: 'Superficie pour ce revêtement', type: 'number', unit: 'pc', default: 564 },
-          ],
-          (a) => [{ description: `Revêtement de plancher — ${(a.type || 'bois franc').toLowerCase()}`, qty: a.pc || 0, unit: 'pc', unitMat: R.revPlancherMat, unitLabor: R.revPlancherMo }]),
+        // Les revêtements de plancher sont regroupés dans l'onglet « Plancher ».
       ],
     },
     {
@@ -537,21 +733,15 @@ export function buildQuestionnaires(R) {
       ],
     },
     { title: 'Démolition', questions: C.demolition('gen') },
-    { title: 'Construction & Murs', questions: C.construction('gen') },
+    { title: 'Ossature & Structure', questions: C.construction('gen') },
+    { title: 'Plafond', questions: C.plafond('gen') },
+    { title: 'Plancher', questions: C.plancher('gen', { plancherPc: 150 }) },
+    { title: 'Peinture', questions: C.peinture('gen') },
     {
-      title: 'Planchers',
+      title: 'Ventilation',
       questions: [
-        q('gen-plancher', 'Nouveau revêtement de plancher',
-          [
-            { name: 'type', label: 'Type de revêtement', type: 'select', options: ['Planchettes de vinyle', 'Bois franc', 'Flottant', 'Céramique', 'Tapis'] },
-            { name: 'pc', label: 'Superficie', type: 'number', unit: 'pc', default: 150 },
-          ],
-          (a) => [{
-            description: `Revêtement de plancher — ${(a.type || 'planchettes de vinyle').toLowerCase()}`,
-            qty: a.pc || 0, unit: 'pc',
-            unitMat: a.type === 'Céramique' ? R.genCeramMat : a.type === 'Bois franc' ? R.genBoisMat : R.genVinyleMat,
-            unitLabor: a.type === 'Céramique' ? R.genCeramMo : R.genVinyleMo,
-          }]),
+        F.flat('gen-ventilateur-ajout', 'Ajout d’un ventilateur', R.ventMo, R.ventMat),
+        F.flat('gen-trappe-ventilation', 'Déplacer ou repositionner une trappe de ventilation', R.trappeVentMo, R.trappeVentMat),
       ],
     },
     { title: 'Électricité', questions: C.electricite('gen') },
@@ -562,9 +752,10 @@ export function buildQuestionnaires(R) {
 }
 
 // Sélection du questionnaire selon le nom / type de la pièce
-export function questionnaireForRoom(room, rates = defaultRates()) {
+export function questionnaireForRoom(room, rates = defaultRates(), unit = 'pi') {
   const R = { ...defaultRates(), ...rates }
-  const set = buildQuestionnaires(R)
+  // Les mesures réelles de la pièce alimentent le choix « Toute la pièce ».
+  const set = buildQuestionnaires(R, roomMeasures(room, unit))
   const name = `${room?.baseName || ''} ${room?.name || ''}`.toLowerCase()
   if (name.includes('bain') || name.includes('lavage')) return { title: 'Salle de bain', sections: set.SDB }
   if (name.includes('cuisine')) return { title: 'Cuisine', sections: set.CUISINE }
