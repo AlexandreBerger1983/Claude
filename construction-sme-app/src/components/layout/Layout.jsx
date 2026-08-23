@@ -4,6 +4,7 @@ import Sidebar from './Sidebar'
 import { Bell, Search, LayoutDashboard, Calculator, FolderKanban, Receipt, Menu, X, Users, FileText } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { computeAlerts } from '../../utils/alerts'
+import BackupReminder from '../ui/BackupReminder'
 import clsx from 'clsx'
 
 // Recherche globale : clients, projets, soumissions, factures
@@ -198,6 +199,7 @@ export default function Layout() {
 
         {/* Contenu */}
         <main className={clsx('flex-1 p-4 lg:p-6 overflow-auto', !inWizard && 'pb-24 lg:pb-6')}>
+          {!inWizard && <BackupReminder />}
           <Outlet />
         </main>
       </div>

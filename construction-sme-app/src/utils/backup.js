@@ -43,6 +43,67 @@ export function buildBackup() {
   }
 }
 
+// ─── Rappel mensuel ──────────────────────────────────────────────────────────
+// Cette clé est volontairement HORS de BACKUP_KEYS : elle décrit l'habitude de
+// sauvegarde de ce navigateur-ci, pas les données de l'entreprise. Restaurer
+// une vieille sauvegarde ne doit donc pas réécrire l'historique du rappel.
+export const REMINDER_KEY = 'cp-sauvegarde-rappel'
+export const RAPPEL_JOURS = 30
+
+const JOUR_MS = 24 * 60 * 60 * 1000
+
+function lireRappel() {
+  try {
+    const brut = window.localStorage.getItem(REMINDER_KEY)
+    if (brut) return JSON.parse(brut)
+  } catch { /* stockage indisponible */ }
+  // Première visite : on démarre le compteur aujourd'hui, pour ne pas
+  // réclamer une sauvegarde à quelqu'un qui vient d'ouvrir l'application.
+  const etat = { derniere: null, depuis: new Date().toISOString(), reporteA: null }
+  ecrireRappel(etat)
+  return etat
+}
+
+function ecrireRappel(etat) {
+  try {
+    window.localStorage.setItem(REMINDER_KEY, JSON.stringify(etat))
+  } catch { /* stockage indisponible */ }
+}
+
+export function etatRappel() {
+  return lireRappel()
+}
+
+// Nombre de jours depuis la dernière sauvegarde, ou depuis la première
+// utilisation si aucune sauvegarde n'a jamais été faite.
+export function joursDepuisSauvegarde() {
+  const { derniere, depuis } = lireRappel()
+  const ref = derniere ?? depuis
+  if (!ref) return 0
+  return Math.floor((Date.now() - new Date(ref).getTime()) / JOUR_MS)
+}
+
+export function jamaisSauvegarde() {
+  return lireRappel().derniere === null
+}
+
+// Faut-il afficher le rappel ? Non si l'utilisateur l'a reporté récemment.
+export function doitRappeler() {
+  const { reporteA } = lireRappel()
+  if (reporteA && Date.now() < new Date(reporteA).getTime()) return false
+  return joursDepuisSauvegarde() >= RAPPEL_JOURS
+}
+
+export function reporterRappel(jours = 7) {
+  const etat = lireRappel()
+  ecrireRappel({ ...etat, reporteA: new Date(Date.now() + jours * JOUR_MS).toISOString() })
+}
+
+function marquerSauvegarde() {
+  const etat = lireRappel()
+  ecrireRappel({ ...etat, derniere: new Date().toISOString(), reporteA: null })
+}
+
 export function exportBackup() {
   const sauvegarde = buildBackup()
   const blob = new Blob([JSON.stringify(sauvegarde, null, 2)], { type: 'application/json' })
@@ -56,6 +117,7 @@ export function exportBackup() {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+  marquerSauvegarde()
   return Object.keys(sauvegarde.donnees).length
 }
 
