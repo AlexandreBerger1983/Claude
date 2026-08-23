@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import FormModal from '../ui/FormModal'
 import { useData } from '../../store/DataContext'
-import { CATALOG, CATEGORIES, CATEGORY_META, ROOM_PRESETS, PROJECT_TYPE_CHIPS } from '../../data/estimatorCatalog'
+import { CATEGORIES, CATEGORY_META, ROOM_PRESETS, PROJECT_TYPE_CHIPS, CATALOG_PRICES_KEY, applyCatalogPrices } from '../../data/estimatorCatalog'
 import { formatCurrency } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
@@ -340,6 +340,9 @@ function StepWorks({ draft, update }) {
   const [showQuestionnaire, setShowQuestionnaire] = useState(false)
   // tarifs du questionnaire : valeurs par défaut + personnalisations (Paramètres)
   const questionnaireRates = { ...defaultRates(), ...readStorage(RATES_KEY, {}) }
+  // catalogue du devis rapide, avec les prix de l'entreprise (Paramètres →
+  // Prix du devis rapide) appliqués par-dessus les prix livrés
+  const catalogue = applyCatalogPrices(readStorage(CATALOG_PRICES_KEY, {}))
   const [invSearch, setInvSearch] = useState('')
 
   useEffect(() => {
@@ -399,7 +402,7 @@ function StepWorks({ draft, update }) {
   const setItemBasis = (item, base) => {
     const room = rooms.find(r => r.id === item.roomId)
     if (!room) return
-    const cat = CATALOG.find(c => c.id === item.catalogId)
+    const cat = catalogue.find(c => c.id === item.catalogId)
     // Prix métriques d'origine, pour ne pas empiler les conversions si l'on
     // bascule plusieurs fois d'une base à l'autre.
     const facteurActuel = basisUnit(item.basis ?? BASE_PIECE, unit).facteur
@@ -685,7 +688,7 @@ function StepWorks({ draft, update }) {
       <div className="space-y-2.5">
         {CATEGORIES.map(cat => {
           const meta = CATEGORY_META[cat] ?? { emoji: '🔧', desc: '' }
-          const catItems = CATALOG.filter(c => c.category === cat)
+          const catItems = catalogue.filter(c => c.category === cat)
           const selectedCount = roomItems.filter(it => catItems.some(c => c.id === it.catalogId)).length
           const isOpen = openCategory === cat
           return (

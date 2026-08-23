@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList, Download } from 'lucide-react'
+import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList, Download, Hammer } from 'lucide-react'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import { RATE_DEFS, RATE_GROUPS, RATES_KEY, defaultRates } from '../../data/roomQuestionnaires'
+import {
+  CATALOG, CATEGORIES, CATEGORY_META, CATALOG_PRICES_KEY, CATALOG_PRICE_FIELDS, catalogDefaultPrice,
+} from '../../data/estimatorCatalog'
 import { useData } from '../../store/DataContext'
 import { formatCurrency } from '../../utils/formatters'
 import { exportBackup, parseBackup, restoreBackup, backupSize } from '../../utils/backup'
@@ -92,14 +95,136 @@ function TarifsTab() {
   )
 }
 
+// ─── Onglet : Prix du devis rapide ────────────────────────────────────────────
+// Même principe que les tarifs du questionnaire : on ne conserve que les prix
+// réellement modifiés, pour pouvoir revenir article par article au prix livré.
+function PrixCatalogueTab() {
+  const [overrides, setOverrides] = useLocalStorage(CATALOG_PRICES_KEY, {})
+  const [recherche, setRecherche] = useState('')
+
+  const valueOf = (id, field) => overrides[id]?.[field] ?? catalogDefaultPrice(id, field)
+  const estModifie = (id, field) => overrides[id]?.[field] !== undefined
+
+  const setPrix = (id, field, value) => {
+    const num = parseFloat(value)
+    setOverrides(o => {
+      const article = { ...(o[id] ?? {}) }
+      if (value === '' || Number.isNaN(num) || num < 0 || num === catalogDefaultPrice(id, field)) delete article[field]
+      else article[field] = num
+      const n = { ...o }
+      if (Object.keys(article).length === 0) delete n[id]
+      else n[id] = article
+      return n
+    })
+  }
+
+  const changedCount = Object.values(overrides).reduce((s, a) => s + Object.keys(a).length, 0)
+
+  const resetAll = () => {
+    if (window.confirm('Remettre tous les prix du devis rapide à leurs valeurs par défaut ?')) setOverrides({})
+  }
+
+  const terme = recherche.trim().toLowerCase()
+  const correspond = (item) =>
+    !terme || item.label.toLowerCase().includes(terme) || item.category.toLowerCase().includes(terme)
+
+  return (
+    <div className="space-y-5">
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-sm text-blue-800 leading-relaxed">
+        <p className="font-semibold mb-1">💡 À quoi servent ces prix ?</p>
+        <p>
+          Ce sont les prix des travaux proposés à l'étape 3 du <strong>devis rapide</strong>.
+          Modifiez-les ici une seule fois et tous vos prochains devis les utiliseront. Les valeurs
+          modifiées sont surlignées. Les prix sont au <strong>mètre</strong> (m², m linéaire) ou à
+          l'unité ; l'application les convertit en pieds carrés à l'affichage.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm text-slate-500">
+          {changedCount > 0 ? `${changedCount} prix personnalisé(s)` : 'Tous les prix sont aux valeurs par défaut'}
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            value={recherche}
+            onChange={e => setRecherche(e.target.value)}
+            placeholder="Rechercher un travail…"
+            className="input py-1.5 text-sm w-52"
+          />
+          {changedCount > 0 && (
+            <button onClick={resetAll} className="btn-secondary text-xs text-red-600 border-red-200 hover:bg-red-50">
+              <RotateCcw size={13} /> Tout remettre par défaut
+            </button>
+          )}
+        </div>
+      </div>
+
+      {CATEGORIES.map(cat => {
+        const items = CATALOG.filter(c => c.category === cat && correspond(c))
+        if (items.length === 0) return null
+        const meta = CATEGORY_META[cat] ?? { emoji: '🔧' }
+        return (
+          <div key={cat} className="card p-0 overflow-hidden">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2">
+              <span>{meta.emoji}</span> {cat}
+            </div>
+            <div className="divide-y divide-slate-50">
+              {items.map(item => (
+                <div key={item.id} className="px-4 py-2.5">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="text-sm text-slate-700">{item.label}</p>
+                      <p className="text-[11px] text-slate-400">par {item.unit}</p>
+                    </div>
+                    {CATALOG_PRICE_FIELDS.map(f => {
+                      const changed = estModifie(item.id, f.key)
+                      return (
+                        <div key={f.key} className="flex items-center gap-1.5 flex-shrink-0">
+                          <label className="text-[11px] text-slate-400 w-20 text-right">{f.label}</label>
+                          <input
+                            type="number" min="0" step="0.5" inputMode="decimal"
+                            value={valueOf(item.id, f.key)}
+                            onChange={e => setPrix(item.id, f.key, e.target.value)}
+                            onFocus={e => e.target.select()}
+                            className={clsx('input w-24 py-1 text-sm text-right', changed && 'border-amber-300 bg-amber-50/60 font-bold')}
+                          />
+                          <span className="text-xs text-slate-400 w-4">$</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {CATALOG_PRICE_FIELDS.some(f => estModifie(item.id, f.key)) && (
+                    <div className="flex items-center gap-3 mt-1.5 pl-1">
+                      {CATALOG_PRICE_FIELDS.filter(f => estModifie(item.id, f.key)).map(f => (
+                        <button
+                          key={f.key}
+                          onClick={() => setPrix(item.id, f.key, '')}
+                          className="text-[11px] text-slate-400 hover:text-slate-600 underline"
+                        >
+                          {f.label} — défaut {formatCurrency(catalogDefaultPrice(item.id, f.key))}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Settings() {
   const [settings, setSettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const { resetToSeed } = useData()
   const [saved, setSaved] = useState(false)
   const [backupMsg, setBackupMsg] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('onglet') === 'tarifs' ? 'tarifs' : 'entreprise'
-  const setTab = (t) => setSearchParams(t === 'tarifs' ? { onglet: 'tarifs' } : {})
+  const ongletDemande = searchParams.get('onglet')
+  const tab = ['tarifs', 'prix'].includes(ongletDemande) ? ongletDemande : 'entreprise'
+  const setTab = (t) => setSearchParams(t === 'entreprise' ? {} : { onglet: t })
 
   const handleReset = () => {
     if (window.confirm('Remettre les données de démonstration ? Vos clients, projets, factures et autres données saisies seront remplacés par les exemples de départ. Cette action est irréversible.')) {
@@ -164,7 +289,9 @@ export default function Settings() {
         <div>
           <h2 className="section-title">Paramètres</h2>
           <p className="text-sm text-slate-500 mt-0.5">
-            {tab === 'tarifs' ? 'Prix par défaut du questionnaire de soumission' : 'Ces informations apparaissent sur vos devis, soumissions et factures'}
+            {tab === 'tarifs' ? 'Prix par défaut du questionnaire de soumission'
+              : tab === 'prix' ? 'Prix par défaut des travaux du devis rapide'
+              : 'Ces informations apparaissent sur vos devis, soumissions et factures'}
           </p>
         </div>
         {tab === 'entreprise' && (
@@ -190,9 +317,17 @@ export default function Settings() {
         >
           <ClipboardList size={15} /> Tarifs du questionnaire
         </button>
+        <button
+          onClick={() => setTab('prix')}
+          className={clsx('flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors',
+            tab === 'prix' ? 'bg-brand-500 text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50')}
+        >
+          <Hammer size={15} /> Prix du devis rapide
+        </button>
       </div>
 
       {tab === 'tarifs' && <TarifsTab />}
+      {tab === 'prix' && <PrixCatalogueTab />}
 
       {tab === 'entreprise' && (<>
 

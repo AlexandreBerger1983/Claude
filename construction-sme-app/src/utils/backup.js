@@ -10,6 +10,7 @@
 
 import { SETTINGS_KEY } from '../data/settingsDefaults'
 import { RATES_KEY } from '../data/roomQuestionnaires'
+import { CATALOG_PRICES_KEY } from '../data/estimatorCatalog'
 import { DRAFT_KEY, SAVED_KEY } from '../components/estimator/estimatorUtils'
 import { PAYROLL_KEY, PAYROLL_IMPORT_FLAG } from '../components/payroll/payrollStore'
 import { STORE_KEY } from '../store/DataContext'
@@ -26,6 +27,7 @@ export const BACKUP_KEYS = [
   { key: DRAFT_KEY,           label: 'Devis en cours' },
   { key: SETTINGS_KEY,        label: 'Paramètres de l\'entreprise' },
   { key: RATES_KEY,           label: 'Grille de tarifs du questionnaire' },
+  { key: CATALOG_PRICES_KEY,  label: 'Prix personnalisés du devis rapide' },
 ]
 
 // Construit l'objet de sauvegarde à partir du stockage local.

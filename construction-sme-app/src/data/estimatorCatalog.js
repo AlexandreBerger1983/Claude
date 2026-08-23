@@ -440,3 +440,43 @@ export const PROJECT_TYPE_CHIPS = [
   { label: 'Rénovation générale', emoji: '🔨' },
   { label: 'Autre', emoji: '📋' },
 ]
+
+// ─── Prix personnalisés du devis rapide ──────────────────────────────────────
+// Les prix ci-dessus sont ceux livrés avec l'application. L'entreprise peut les
+// remplacer par les siens depuis Paramètres → Prix du devis rapide : seules les
+// valeurs modifiées sont conservées, sous la forme
+//   { 'peinture-murs': { unitMat: 12, unitLabor: 20 }, … }
+// ce qui permet de revenir au prix d'origine article par article, et de suivre
+// automatiquement les futures mises à jour du catalogue pour tout le reste.
+export const CATALOG_PRICES_KEY = 'cp-catalogue-prix'
+
+// Champs de prix modifiables, dans l'ordre d'affichage de la page Paramètres.
+export const CATALOG_PRICE_FIELDS = [
+  { key: 'unitMat', label: 'Matériel' },
+  { key: 'unitLabor', label: "Main-d'œuvre" },
+]
+
+const nombreOuNull = (v) => {
+  const n = parseFloat(v)
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+// Catalogue effectif : le catalogue livré, avec les prix de l'entreprise.
+// Une surcharge invalide ou absente laisse le prix d'origine en place.
+export function applyCatalogPrices(overrides = {}) {
+  if (!overrides || Object.keys(overrides).length === 0) return CATALOG
+  return CATALOG.map(item => {
+    const o = overrides[item.id]
+    if (!o) return item
+    const modifie = {}
+    for (const f of CATALOG_PRICE_FIELDS) {
+      const n = nombreOuNull(o[f.key])
+      if (n !== null) modifie[f.key] = n
+    }
+    return Object.keys(modifie).length > 0 ? { ...item, ...modifie } : item
+  })
+}
+
+// Prix d'origine d'un article, pour afficher « revenir au prix par défaut ».
+export const catalogDefaultPrice = (id, field) =>
+  CATALOG.find(c => c.id === id)?.[field] ?? 0
