@@ -56,9 +56,17 @@ jobs:
         run: npm ci
         working-directory: construction-sme-app
 
+      # Adresse et clé publique de la base de données, injectées au moment de
+      # la construction. Tant que ces secrets ne sont pas définis dans le
+      # dépôt, l'application fonctionne sur le stockage du navigateur.
+      # La clé « anon » est faite pour être publique : la protection des
+      # données vient des règles d'accès (voir construction-sme-app/supabase).
       - name: Construire l'application
         run: npm run build
         working-directory: construction-sme-app
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Assembler le site (application dans un sous-dossier au nom de la branche)
         run: |
