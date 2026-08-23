@@ -96,7 +96,13 @@ function QuoteList() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filtered.map(q => (
-              <tr key={q.id} className="table-row-hover">
+              // Toute la ligne ouvre la soumission : cliquer sur la ligne est le
+              // geste attendu, alors que le lien « Voir » seul passe inaperçu.
+              <tr
+                key={q.id}
+                onClick={() => navigate(`/soumissions/${q.id}`)}
+                className="table-row-hover cursor-pointer"
+              >
                 <td className="px-5 py-3.5">
                   <p className="font-semibold text-slate-800">{q.number}</p>
                   <p className="text-xs text-slate-500 mt-0.5 max-w-[200px] truncate">{q.title}</p>
@@ -112,7 +118,7 @@ function QuoteList() {
                     <span className={clsx('badge', statusColor[q.status])}>{q.status}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3.5">
+                <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <Link to={`/soumissions/${q.id}`} className="btn-ghost py-1 px-2 text-xs">
                       <Eye size={13} /> Voir
