@@ -112,7 +112,25 @@ export default function RoomQuestionnaire({ room, questionnaire, onSubmit, onClo
           continue
         }
         const included = !!ans?.yes
-        checklist.push({ id: question.id, label: question.label, section: section.title, included })
+        // Valeurs saisies (heures, superficies, quantités…) conservées avec
+        // leur libellé et leur unité : elles alimentent la feuille « Relevé de
+        // quantité » de l'export Excel.
+        const saisies = included
+          ? question.inputs
+              .map(inp => ({
+                label: inp.label,
+                unit: inp.unit || '',
+                value: (ans.values ?? defaultsFor(question))[inp.name],
+              }))
+              .filter(v => v.value !== '' && v.value != null)
+          : []
+        checklist.push({
+          id: question.id,
+          label: question.label,
+          section: section.title,
+          included,
+          inputs: saisies,
+        })
         if (!included) continue
         const override = parseFloat(overrides[question.id])
         if (!Number.isNaN(override) && overrides[question.id] !== '') {

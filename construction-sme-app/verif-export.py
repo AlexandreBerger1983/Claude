@@ -29,7 +29,11 @@ def check(label, got, want, tol=0.02):
     print(f"{'OK  ' if good else 'ÉCHEC'} {label} = {got:,.2f} (attendu {want:,.2f})")
 
 
-assert wb.sheetnames == ['Calcul des coûts', 'Formulaire soumission'], wb.sheetnames
+# « Relevé de quantité » n'existe que si la soumission vient d'un questionnaire.
+attendues = ['Calcul des coûts', 'Formulaire soumission']
+assert wb.sheetnames[-2:] == attendues, wb.sheetnames
+if 'Relevé de quantité' in wb.sheetnames:
+    assert wb.sheetnames[0] == 'Relevé de quantité', wb.sheetnames
 print(f"OK   feuilles : {wb.sheetnames}")
 
 cc = wb['Calcul des coûts']
@@ -111,6 +115,25 @@ else:
     print("OK   feuille client : pas de liste de travaux (soumission sans questionnaire)")
 assert any('Conditions générales' in t for t in textes), 'conditions absentes'
 print("OK   feuille client : conditions générales présentes")
+
+# Mentions fixes des formulaires papier
+assert any('Transporter les vidanges' in t for t in textes), 'ligne vidanges absente'
+print("OK   feuille client : « Transporter les vidanges hors du site »")
+
+# Titres de section en majuscules (TRAVAUX GÉNÉRAUX, FINITION…)
+if inclus or non_app:
+    sections = [t for t in textes if t.isupper() and len(t) > 6 and 'SOUMISSION' not in t and 'CLIENT' not in t]
+    assert sections, 'aucun titre de section'
+    print(f"OK   feuille client : titres de section ({', '.join(sections[:3])}…)")
+
+# Feuille « Relevé de quantité »
+if 'Relevé de quantité' in wb.sheetnames:
+    rq = wb['Relevé de quantité']
+    tr = [c.value for row in rq.iter_rows() for c in row if isinstance(c.value, str)]
+    assert any('RELEVÉ DE QUANTITÉ' in t for t in tr), 'titre du relevé absent'
+    assert any(t == 'Oui' for t in tr) or any(t == 'Non' for t in tr), 'aucune réponse Oui/Non'
+    assert any('Taux horaire' in t for t in tr), 'taux horaire absent'
+    print("OK   feuille « Relevé de quantité » : titre, réponses Oui/Non et taux horaire")
 
 print('\n' + ('✅ Le fichier Excel exporté est conforme au gabarit' if ok else '❌ Des écarts subsistent'))
 sys.exit(0 if ok else 1)

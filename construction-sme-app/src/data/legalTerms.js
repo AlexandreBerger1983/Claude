@@ -36,5 +36,19 @@ export const CONDITIONS_GENERALES = [
   },
 ]
 
+// Travaux toujours compris, imprimés tels quels sur les formulaires papier.
+export const FIXED_INCLUDED_WORKS = [
+  'Transporter les vidanges hors du site',
+]
+
+// Notes accompagnant certaines lignes sur les formulaires de l'entreprise.
+export const CERAMIC_NOTE =
+  'Note sur la céramique : la pose et la colle de la céramique sont incluses. Le client doit fournir la céramique et le coulis.'
+
+export const ELEC_ALLOCATION_LABEL = 'ÉLECTRICITÉ — ALLOCATION'
+
+export const ELEC_ALLOCATION_NOTE =
+  "Note sur l'électricité : ce montant est une allocation. À la fin du projet, il sera ajusté soit à la hausse soit à la baisse selon les travaux électriques réellement effectués."
+
 export const ACCEPTANCE_TEXT =
   "J'accepte que cette soumission devienne le contrat qui lie les parties et que les travaux soient effectués tel que décrit ci-haut."

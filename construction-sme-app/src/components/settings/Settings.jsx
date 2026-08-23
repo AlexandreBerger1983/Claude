@@ -194,6 +194,15 @@ export default function Settings() {
                 className="input font-semibold"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="label">Sous-titre <span className="font-normal text-slate-400">(imprimé sous le nom sur les soumissions)</span></label>
+              <input
+                value={settings.subtitle ?? ''}
+                onChange={e => update('subtitle', e.target.value)}
+                placeholder="ex: Entrepreneur Général"
+                className="input"
+              />
+            </div>
             <div>
               <label className="label">Nom du propriétaire</label>
               <input
@@ -209,6 +218,16 @@ export default function Settings() {
                 value={settings.phone}
                 onChange={e => update('phone', e.target.value)}
                 placeholder="ex: 514-555-0100"
+                inputMode="tel"
+                className="input"
+              />
+            </div>
+            <div>
+              <label className="label">Télécopieur</label>
+              <input
+                value={settings.fax ?? ''}
+                onChange={e => update('fax', e.target.value)}
+                placeholder="ex: 418 822-4547"
                 inputMode="tel"
                 className="input"
               />

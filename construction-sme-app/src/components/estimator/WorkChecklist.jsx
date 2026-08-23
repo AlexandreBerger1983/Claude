@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { FIXED_INCLUDED_WORKS, CERAMIC_NOTE } from '../../data/legalTerms'
 
 // Reproduit la feuille « Formulaire soumission » du gabarit Excel : chaque
 // travail possible de la pièce est énuméré et marqué « Inclus » ou
@@ -15,6 +16,20 @@ export default function WorkChecklist({ rooms }) {
       <p className="text-xs text-slate-500 mb-4">
         Chaque travail est indiqué « Inclus » ou « Non-applicable ». Seuls les travaux marqués « Inclus » font partie du prix soumis.
       </p>
+
+      {/* Travaux toujours compris, comme sur les formulaires papier */}
+      <table className="w-full text-sm mb-4">
+        <tbody>
+          {FIXED_INCLUDED_WORKS.map(w => (
+            <tr key={w} className="border-b border-slate-50">
+              <td className="py-1.5 pr-3 text-slate-700">{w}</td>
+              <td className="py-1.5 text-right whitespace-nowrap w-32">
+                <span className="text-xs font-semibold text-emerald-600">Inclus</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       {withList.map(room => {
         const sections = [...new Set(room.checklist.map(c => c.section))]
@@ -49,9 +64,7 @@ export default function WorkChecklist({ rooms }) {
         )
       })}
 
-      <p className="text-xs text-slate-500 italic">
-        Note sur la céramique : la pose et la colle sont incluses. Le client fournit la céramique et le coulis.
-      </p>
+      <p className="text-xs text-slate-500 italic">{CERAMIC_NOTE}</p>
     </div>
   )
 }
