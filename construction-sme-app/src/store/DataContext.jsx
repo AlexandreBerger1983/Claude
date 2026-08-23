@@ -16,7 +16,7 @@ import {
 // toutes les modifications (ajouts, éditions, changements de statut…)
 // survivent au rechargement de la page.
 
-const STORE_KEY = 'cp-donnees-v1'
+export const STORE_KEY = 'cp-donnees-v1'
 
 const seed = () => ({
   clients: seedClients,

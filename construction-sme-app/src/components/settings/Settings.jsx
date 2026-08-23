@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList } from 'lucide-react'
+import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList, Download } from 'lucide-react'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import { RATE_DEFS, RATE_GROUPS, RATES_KEY, defaultRates } from '../../data/roomQuestionnaires'
 import { useData } from '../../store/DataContext'
 import { formatCurrency } from '../../utils/formatters'
+import { exportBackup, parseBackup, restoreBackup, backupSize } from '../../utils/backup'
 import clsx from 'clsx'
 
 // ─── Onglet : Tarifs du questionnaire de soumission ───────────────────────────
@@ -95,6 +96,7 @@ export default function Settings() {
   const [settings, setSettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const { resetToSeed } = useData()
   const [saved, setSaved] = useState(false)
+  const [backupMsg, setBackupMsg] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = searchParams.get('onglet') === 'tarifs' ? 'tarifs' : 'entreprise'
   const setTab = (t) => setSearchParams(t === 'tarifs' ? { onglet: 'tarifs' } : {})
@@ -102,6 +104,42 @@ export default function Settings() {
   const handleReset = () => {
     if (window.confirm('Remettre les données de démonstration ? Vos clients, projets, factures et autres données saisies seront remplacés par les exemples de départ. Cette action est irréversible.')) {
       resetToSeed()
+    }
+  }
+
+  const handleBackup = () => {
+    try {
+      const n = exportBackup()
+      setBackupMsg({ type: 'ok', text: `Sauvegarde téléchargée (${n} ensemble(s) de données). Conservez ce fichier en lieu sûr.` })
+    } catch (e) {
+      setBackupMsg({ type: 'error', text: `La sauvegarde a échoué : ${e.message}` })
+    }
+  }
+
+  // La restauration écrase tout : on valide le fichier AVANT de toucher au
+  // stockage, puis on demande confirmation, puis on recharge la page pour que
+  // toute l'application reparte des données restaurées.
+  const handleRestore = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de re-sélectionner le même fichier
+    if (!file) return
+    setBackupMsg(null)
+    try {
+      const sauvegarde = parseBackup(await file.text())
+      const quand = sauvegarde.creeLe
+        ? new Date(sauvegarde.creeLe).toLocaleString('fr-CA')
+        : 'date inconnue'
+      const ok = window.confirm(
+        `Restaurer la sauvegarde du ${quand} ?\n\n` +
+        `Elle contient ${sauvegarde.cles.length} ensemble(s) de données.\n\n` +
+        `TOUTES les données actuelles de ce navigateur seront remplacées. ` +
+        `Cette action est irréversible : sauvegardez d'abord si vous avez un doute.`
+      )
+      if (!ok) return
+      restoreBackup(sauvegarde)
+      window.location.reload()
+    } catch (err) {
+      setBackupMsg({ type: 'error', text: `Restauration impossible : ${err.message}` })
     }
   }
 
@@ -341,6 +379,45 @@ export default function Settings() {
           />
           <span className="text-slate-500 text-sm flex-shrink-0">$ / an</span>
         </div>
+      </div>
+
+      {/* Sauvegarde et restauration */}
+      <div className="card">
+        <h3 className="font-semibold text-slate-800 mb-1">Sauvegarde de vos données</h3>
+        <p className="text-xs text-slate-500 mb-3">
+          Vos données sont enregistrées <strong>uniquement dans ce navigateur</strong>. Elles disparaîtraient si
+          vous vidiez les données de navigation, et ne suivent pas d'un appareil à l'autre. Téléchargez
+          régulièrement une sauvegarde et conservez-la en lieu sûr (OneDrive, clé USB…).
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={handleBackup} className="btn-primary">
+            <Download size={15} /> Sauvegarder mes données
+          </button>
+          <label className="btn-secondary cursor-pointer">
+            <Upload size={15} /> Restaurer une sauvegarde
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleRestore}
+            />
+          </label>
+        </div>
+
+        {backupMsg && (
+          <p className={clsx(
+            'mt-3 text-sm',
+            backupMsg.type === 'error' ? 'text-red-600' : 'text-emerald-600',
+          )}>
+            {backupMsg.text}
+          </p>
+        )}
+
+        <p className="mt-3 text-xs text-slate-400">
+          Taille actuelle des données : {(backupSize() / 1024).toFixed(1)} Ko.
+          La restauration remplace l'intégralité des données de ce navigateur.
+        </p>
       </div>
 
       {/* Zone données */}
