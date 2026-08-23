@@ -72,10 +72,19 @@ export const applyMeasureBasis = ({ base, roomCalc, unit, naturalKey = 'floorAre
   }
 }
 
+// Multiplicateur appliqué à la mesure brute de la pièce :
+//   • wasteFactor  = perte à la coupe (on commande plus que la surface nette)
+//   • coverage     = part de la pièce réellement couverte. Une douche ou un
+//                    dosseret n'occupent qu'une fraction des murs ; sans cette
+//                    part, les trois revêtements muraux compteraient chacun la
+//                    totalité des murs et le devis serait triplé.
+export const qtyFactor = (catalogItem = {}) =>
+  (catalogItem.wasteFactor ?? 1) * (catalogItem.coverage ?? 1)
+
 export const autoQtyForItem = (catalogItem, roomCalc) => {
   if (!catalogItem?.autoQty || !roomCalc) return null
   const val = roomCalc[catalogItem.autoQty] ?? 0
-  return +(val * (catalogItem.wasteFactor ?? 1)).toFixed(1)
+  return +(val * qtyFactor(catalogItem)).toFixed(1)
 }
 
 // Montant d'une ligne. Reprend la formule du gabarit Excel :

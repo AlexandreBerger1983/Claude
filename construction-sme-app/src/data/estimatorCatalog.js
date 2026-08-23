@@ -308,16 +308,31 @@ export const CATALOG = [
     note: 'Membrane Delta-MS ou Bakor 790-11',
   },
 
-  // ─── Carrelage ──────────────────────────────────────────────────────────────
+  // ─── Revêtement mural ───────────────────────────────────────────────────────
+  // Les trois se mesurent en superficie : la quantité proposée part des murs de
+  // la pièce, puis s'ajuste à la surface réellement couverte (une douche ou un
+  // dosseret n'occupent qu'une partie des murs).
+  // « coverage » = part des murs de la pièce réellement couverte. Une douche
+  // ne couvre qu'un coin de la salle de bain et un dosseret qu'une bande au-
+  // dessus du comptoir : sans cette part, les trois articles compteraient
+  // chacun la totalité des murs. La quantité reste modifiable à la main.
   {
-    id: 'carrelage-mur-sdb', category: 'Carrelage', label: 'Carrelage mural salle de bain (30×60)',
-    unit: 'm²', autoQty: 'wallArea', unitMat: 55, unitLabor: 55, wasteFactor: 1.12,
-    note: 'Inclus backer board, mortier, coulis',
+    id: 'carrelage-douche', category: 'Revêtement mural', label: 'Céramique douche',
+    unit: 'm²', autoQty: 'wallArea', unitMat: 65, unitLabor: 70, wasteFactor: 1.15,
+    coverage: 0.3,
+    note: 'Alcôve 3 murs — membrane d\'étanchéité, mortier et coulis inclus. Ajustez la superficie de la douche',
   },
   {
-    id: 'carrelage-dosseret', category: 'Carrelage', label: 'Dosseret cuisine (métro ou mosaïque)',
-    unit: 'm²', autoQty: null, unitMat: 75, unitLabor: 65, wasteFactor: 1.15,
-    note: 'Pose au mortier époxy, joints serrés',
+    id: 'carrelage-mur-sdb', category: 'Revêtement mural', label: 'Mur en céramique',
+    unit: 'm²', autoQty: 'wallArea', unitMat: 55, unitLabor: 55, wasteFactor: 1.12,
+    coverage: 1,
+    note: 'Murs pleine hauteur — backer board, mortier et coulis inclus',
+  },
+  {
+    id: 'carrelage-dosseret', category: 'Revêtement mural', label: 'Dosseret',
+    unit: 'm²', autoQty: 'wallArea', unitMat: 75, unitLabor: 65, wasteFactor: 1.15,
+    coverage: 0.06,
+    note: 'Bande au-dessus du comptoir — mortier époxy, joints serrés. Ajustez la superficie du dosseret',
   },
 
   // ─── Cuisines ───────────────────────────────────────────────────────────────
@@ -383,7 +398,7 @@ export const CATEGORY_META = {
   'Revêtement extérieur':  { emoji: '🏠', desc: 'Vinyle, brique, stucco' },
   'Toiture':               { emoji: '☔', desc: 'Bardeau, membrane' },
   'Béton & Fondations':    { emoji: '🪨', desc: 'Dalles, drains, imperméabilisation' },
-  'Carrelage':             { emoji: '🔲', desc: 'Céramique murale, dosseret' },
+  'Revêtement mural':      { emoji: '🔲', desc: 'Céramique de douche, murs, dosseret' },
   'Cuisine & Armoires':    { emoji: '🍳', desc: 'Armoires, comptoirs' },
   'Divers':                { emoji: '📦', desc: 'Nettoyage, benne, gestion' },
 }

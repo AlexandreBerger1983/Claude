@@ -14,7 +14,7 @@ import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefau
 import {
   DRAFT_KEY, SAVED_KEY, emptyDraft, computeRoom, autoQtyForItem,
   lineTotal, computeTotals, nextQuoteNumber, fromMeters,
-  applyMeasureBasis, basisUnit, BASE_PIECE, BASE_LINEAIRE,
+  applyMeasureBasis, basisUnit, qtyFactor, BASE_PIECE, BASE_LINEAIRE,
 } from './estimatorUtils'
 import Stepper from './Stepper'
 import RoomQuestionnaire from './RoomQuestionnaire'
@@ -372,7 +372,7 @@ function StepWorks({ draft, update }) {
           naturalKey: catalogItem.autoQty,
           matM: catalogItem.unitMat,
           laborM: catalogItem.unitLabor,
-          waste: catalogItem.wasteFactor ?? 1,
+          waste: qtyFactor(catalogItem),
         })
       : null
     update('items', [...items, {
@@ -413,7 +413,7 @@ function StepWorks({ draft, update }) {
       naturalKey: cat?.autoQty ?? 'floorArea',
       matM,
       laborM,
-      waste: cat?.wasteFactor ?? 1,
+      waste: qtyFactor(cat ?? {}),
     })
     update('items', items.map(it => it.id === item.id ? {
       ...it,
