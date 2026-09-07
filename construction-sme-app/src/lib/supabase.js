@@ -12,8 +12,12 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL?.trim()
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim()
+// `import.meta.env` est fourni par Vite au moment de la construction. Il est
+// absent quand ce module est chargé hors du navigateur (tests en ligne de
+// commande) : on ne veut pas que ça plante, seulement qu'il n'y ait pas de base.
+const env = import.meta.env ?? {}
+const url = env.VITE_SUPABASE_URL?.trim()
+const anonKey = env.VITE_SUPABASE_ANON_KEY?.trim()
 
 export const supabaseConfigure = Boolean(url && anonKey)
 

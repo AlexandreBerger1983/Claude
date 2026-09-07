@@ -45,6 +45,11 @@ const prepare = async (page, role) => {
             error: 'invalid_grant', error_description: 'Invalid login credentials',
           }), { status: 400, headers: { 'Content-Type': 'application/json' } })
         }
+        // Les tables de données répondent une liste vide, comme une vraie base
+        // fraîchement créée : ce test-ci ne s'intéresse qu'aux rôles.
+        if (url.includes('/rest/v1/')) {
+          return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
         return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
       return vraiFetch(entree, init)

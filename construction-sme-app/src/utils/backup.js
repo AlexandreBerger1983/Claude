@@ -31,16 +31,22 @@ export const BACKUP_KEYS = [
 ]
 
 // Construit l'objet de sauvegarde à partir du stockage local.
-export function buildBackup() {
+// `donneesEnLigne` : les collections lues dans Supabase. Quand la base est
+// branchée, les clients, projets et soumissions ne sont plus dans le
+// navigateur — sans elles, le fichier ne contiendrait que les préférences et
+// on croirait à tort avoir une sauvegarde complète.
+export function buildBackup(donneesEnLigne = null) {
   const donnees = {}
   for (const { key } of BACKUP_KEYS) {
     const brut = window.localStorage.getItem(key)
     if (brut !== null) donnees[key] = brut // conservé tel quel, sans réinterprétation
   }
+  if (donneesEnLigne) donnees[STORE_KEY] = JSON.stringify(donneesEnLigne)
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     creeLe: new Date().toISOString(),
+    source: donneesEnLigne ? 'supabase' : 'navigateur',
     donnees,
   }
 }
@@ -106,8 +112,8 @@ function marquerSauvegarde() {
   ecrireRappel({ ...etat, derniere: new Date().toISOString(), reporteA: null })
 }
 
-export function exportBackup() {
-  const sauvegarde = buildBackup()
+export function exportBackup(donneesEnLigne = null) {
+  const sauvegarde = buildBackup(donneesEnLigne)
   const blob = new Blob([JSON.stringify(sauvegarde, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

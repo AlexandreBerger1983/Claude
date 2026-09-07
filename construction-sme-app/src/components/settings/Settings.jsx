@@ -218,7 +218,7 @@ function PrixCatalogueTab() {
 
 export default function Settings() {
   const [settings, setSettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
-  const { resetToSeed } = useData()
+  const { resetToSeed, data, surSupabase } = useData()
   const [saved, setSaved] = useState(false)
   const [backupMsg, setBackupMsg] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -234,7 +234,7 @@ export default function Settings() {
 
   const handleBackup = () => {
     try {
-      const n = exportBackup()
+      const n = exportBackup(surSupabase ? data : null)
       setBackupMsg({ type: 'ok', text: `Sauvegarde téléchargée (${n} ensemble(s) de données). Conservez ce fichier en lieu sûr.` })
     } catch (e) {
       setBackupMsg({ type: 'error', text: `La sauvegarde a échoué : ${e.message}` })
@@ -249,6 +249,17 @@ export default function Settings() {
     e.target.value = '' // permet de re-sélectionner le même fichier
     if (!file) return
     setBackupMsg(null)
+    // Restaurer écrit dans le navigateur. Avec la base branchée, l'application
+    // lit ses données dans Supabase : le fichier n'y arriverait pas, et on
+    // croirait avoir restauré. Mieux vaut le dire que le laisser croire.
+    if (surSupabase) {
+      setBackupMsg({
+        type: 'error',
+        text: "La base de données est branchée : la restauration d'un fichier n'est pas possible depuis ici. "
+            + "Elle écrirait dans ce navigateur, pas dans la base partagée. Écrivez-moi pour restaurer une sauvegarde dans la base.",
+      })
+      return
+    }
     try {
       const sauvegarde = parseBackup(await file.text())
       const quand = sauvegarde.creeLe
@@ -558,13 +569,23 @@ export default function Settings() {
       {/* Zone données */}
       <div className="card border-red-100">
         <h3 className="font-semibold text-slate-800 mb-1">Données de l'application</h3>
-        <p className="text-xs text-slate-500 mb-3">
-          Toutes vos données (clients, projets, factures, devis, paie…) sont enregistrées dans ce navigateur.
-          Ce bouton efface tout et remet les exemples de départ.
-        </p>
-        <button onClick={handleReset} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50">
-          <RotateCcw size={15} /> Réinitialiser les données de démonstration
-        </button>
+        {surSupabase ? (
+          <p className="text-xs text-slate-500">
+            Vos données sont dans la base en ligne, partagées par toute l'entreprise.
+            Les exemples de départ ne peuvent plus être remis d'ici : ce serait effacer
+            le travail de tout le monde.
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500 mb-3">
+              Toutes vos données (clients, projets, factures, devis, paie…) sont enregistrées dans ce navigateur.
+              Ce bouton efface tout et remet les exemples de départ.
+            </p>
+            <button onClick={handleReset} className="btn-secondary text-red-600 border-red-200 hover:bg-red-50">
+              <RotateCcw size={15} /> Réinitialiser les données de démonstration
+            </button>
+          </>
+        )}
       </div>
 
       {/* Aperçu */}
