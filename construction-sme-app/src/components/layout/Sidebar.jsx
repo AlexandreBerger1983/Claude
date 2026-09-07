@@ -2,9 +2,11 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, FolderKanban, FileText, Receipt, Users, HardHat,
   Clock, Package, Wrench, BarChart3, Calendar, FolderOpen,
-  ChevronRight, Building2, Bell, Settings, Calculator, Wallet,
+  ChevronRight, Building2, Bell, Settings, Calculator, Wallet, LogOut,
 } from 'lucide-react'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
+import { useAuth } from '../../store/AuthContext'
+import { filtrerNavigation, estChantier, ECRANS_BUREAU } from '../../data/acces'
 import { useData } from '../../store/DataContext'
 import { computeAlerts } from '../../utils/alerts'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
@@ -29,11 +31,18 @@ const nav = [
 
 export default function Sidebar({ collapsed, setCollapsed }) {
   const { data } = useData()
+  const { profil, courriel, connecte, deconnexion } = useAuth()
+  // Le menu ne montre que les écrans ouverts au rôle : un compte chantier n'a
+  // pas de lien vers la facturation ni la paie.
+  const entrees = filtrerNavigation(profil, nav)
+  const chantier = estChantier(profil)
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const urgentAlerts = computeAlerts(data).filter(a => a.type === 'danger' || a.type === 'warning').length
   const companyName = settings.companyName || 'ConstructPro'
   const ownerName = settings.ownerName || 'Propriétaire'
   const initials = (settings.ownerName || 'AB').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  const initialesCompte = ((profil?.nom || courriel || '?').split(/[\s.@]+/).filter(Boolean).map(w => w[0]).join('') || '?')
+    .slice(0, 2).toUpperCase()
 
   return (
     <aside className={clsx(
@@ -73,7 +82,7 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {nav.map(({ label, to, icon: Icon, highlight }) => (
+        {entrees.map(({ label, to, icon: Icon, highlight }) => (
           <NavLink
             key={to}
             to={to}
@@ -93,23 +102,37 @@ export default function Sidebar({ collapsed, setCollapsed }) {
 
       {/* Footer */}
       <div className="border-t border-white/10 p-2 space-y-0.5">
-        <NavLink
-          to="/parametres"
-          className={({ isActive }) => clsx('sidebar-link w-full', isActive && 'active')}
-          title={collapsed ? 'Paramètres' : undefined}
-        >
-          <Settings size={17} />
-          {!collapsed && <span>Paramètres</span>}
-        </NavLink>
+        {/* Les Paramètres portent les prix et les tarifs : bureau seulement. */}
+        {!chantier && (
+          <NavLink
+            to="/parametres"
+            className={({ isActive }) => clsx('sidebar-link w-full', isActive && 'active')}
+            title={collapsed ? 'Paramètres' : undefined}
+          >
+            <Settings size={17} />
+            {!collapsed && <span>Paramètres</span>}
+          </NavLink>
+        )}
         <div className={clsx('flex items-center gap-3 px-3 py-2', collapsed && 'justify-center')}>
           <div className="w-7 h-7 rounded-full bg-brand-500/30 flex items-center justify-center text-brand-300 text-xs font-bold flex-shrink-0">
-            {initials}
+            {connecte ? initialesCompte : initials}
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <div className="text-white text-xs font-medium truncate">{ownerName}</div>
-              <div className="text-slate-500 text-xs truncate">Propriétaire</div>
+              <div className="text-white text-xs font-medium truncate">{connecte ? (profil?.nom || courriel) : ownerName}</div>
+              <div className="text-slate-500 text-xs truncate">
+                {connecte ? (chantier ? 'Chantier' : 'Bureau') : 'Propriétaire'}
+              </div>
             </div>
+          )}
+          {connecte && !collapsed && (
+            <button
+              onClick={deconnexion}
+              title="Se déconnecter"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+            >
+              <LogOut size={15} />
+            </button>
           )}
         </div>
       </div>

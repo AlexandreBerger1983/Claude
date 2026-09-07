@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import { Bell, Search, LayoutDashboard, Calculator, FolderKanban, Receipt, Menu, X, Users, FileText } from 'lucide-react'
+import { useAuth } from '../../store/AuthContext'
+import { filtrerNavigation } from '../../data/acces'
 import { useData } from '../../store/DataContext'
 import { computeAlerts } from '../../utils/alerts'
 import BackupReminder from '../ui/BackupReminder'
@@ -105,7 +107,11 @@ const mobileNav = [
 
 export default function Layout() {
   const { data } = useData()
+  const { profil } = useAuth()
   const navigate = useNavigate()
+  // Même règle que le menu de gauche : la barre du bas ne propose que les
+  // écrans ouverts au rôle.
+  const entreesMobiles = filtrerNavigation(profil, mobileNav)
   const [collapsed, setCollapsed] = useState(false)
   const [showAlerts, setShowAlerts] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -207,7 +213,7 @@ export default function Layout() {
       {/* Barre de navigation mobile (bas d'écran) */}
       {!inWizard && (
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-40 no-print pb-[env(safe-area-inset-bottom)]">
-          {mobileNav.map(({ label, to, icon: Icon }) => (
+          {entreesMobiles.map(({ label, to, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

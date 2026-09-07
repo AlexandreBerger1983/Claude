@@ -1,4 +1,6 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from './store/AuthContext'
+import { peutOuvrir, ecranParDefaut } from './data/acces'
 import Layout from './components/layout/Layout'
 import Dashboard from './components/dashboard/Dashboard'
 import Projects from './components/projects/Projects'
@@ -16,10 +18,20 @@ import Estimator from './components/estimator/Estimator'
 import Payroll from './components/payroll/Payroll'
 import Settings from './components/settings/Settings'
 
+// Un compte chantier renvoyé vers son écran s'il ouvre une adresse réservée au
+// bureau — en tapant l'adresse à la main, ou par un vieux favori. La base
+// refuserait de toute façon les données ; ceci évite juste un écran vide.
+function EcranAutorise({ children }) {
+  const { profil } = useAuth()
+  const { pathname } = useLocation()
+  if (!peutOuvrir(profil, pathname)) return <Navigate to={ecranParDefaut(profil)} replace />
+  return children
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
+      <Route path="/" element={<EcranAutorise><Layout /></EcranAutorise>}>
         <Route index element={<Dashboard />} />
         <Route path="projets/*" element={<Projects />} />
         <Route path="estimateur/*" element={<Estimator />} />
