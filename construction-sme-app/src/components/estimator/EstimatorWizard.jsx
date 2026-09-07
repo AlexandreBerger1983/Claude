@@ -1200,6 +1200,39 @@ export default function EstimatorWizard() {
       ? prev.map(q => (q.id === quote.id ? quote : q))
       : [...prev, quote])
 
+    // Lignes de détail transmises à la soumission. Elles étaient jusqu'ici
+    // laissées vides : la soumission affichait ses totaux sans jamais dire ce
+    // qu'ils recouvraient, et le client ne voyait aucun détail.
+    //
+    // Chaque ligne garde sa quantité et son unité — c'est tout l'intérêt — et
+    // son prix unitaire est ramené du montant de la ligne, plancher « montant
+    // minimum » compris. La marge suit en ligne séparée, comme sur le devis
+    // imprimé et comme dans le gabarit Excel de l'entreprise.
+    const lignesSoumission = draft.items.map(it => {
+      const piece = draft.rooms.find(r => r.id === it.roomId)
+      const q = parseFloat(it.qty) || 0
+      const montant = lineTotal(it)
+      return {
+        id: it.id,
+        description: piece?.name ? `${piece.name} — ${it.description}` : it.description,
+        unit: it.unit || 'unité',
+        qty: q > 0 ? q : 1,
+        unitPrice: +(montant / (q > 0 ? q : 1)).toFixed(4),
+      }
+    })
+    // La ligne de marge absorbe les arrondis des prix unitaires, pour que le
+    // total de la soumission soit exactement celui du devis, au cent près.
+    const sommeLignes = lignesSoumission.reduce((s, l) => s + l.qty * l.unitPrice, 0)
+    if (totals.adminProfit > 0 || lignesSoumission.length > 0) {
+      lignesSoumission.push({
+        id: `admin-${quote.id}`,
+        description: `Administration et profit (${totals.adminProfitPct} %)`,
+        unit: 'forfait',
+        qty: 1,
+        unitPrice: +(totals.pretax - sommeLignes).toFixed(2),
+      })
+    }
+
     // Le devis apparaît aussi dans le module Soumissions, pour un suivi
     // centralisé (statut Brouillon jusqu'à envoi/acceptation).
     const champsSoumission = {
@@ -1212,6 +1245,7 @@ export default function EstimatorWizard() {
       tps: totals.tps,
       tvq: totals.tvq,
       total: totals.total,
+      items: lignesSoumission,
     }
     const soumissionExistante = data.quotes.find(q => q.number === quote.number)
     if (enModification && soumissionExistante) {
@@ -1224,7 +1258,6 @@ export default function EstimatorWizard() {
         date: new Date().toISOString().slice(0, 10),
         status: 'Brouillon',
         estimator: '',
-        items: [],
       })
     }
 

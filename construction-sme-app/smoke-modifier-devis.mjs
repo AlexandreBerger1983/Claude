@@ -135,7 +135,49 @@ if (Math.abs(memeNumero[0].total - totalModifie) > 1)
   throw new Error('la soumission liée n’a pas suivi le nouveau montant')
 console.log('OK: la soumission liée est mise à jour, sans doublon')
 
+// ─── La soumission liée porte les lignes de détail ───────────────────────────
+const soumission = memeNumero[0]
+console.log(`Lignes de détail dans la soumission : ${soumission.items?.length ?? 0}`)
+if (!Array.isArray(soumission.items) || soumission.items.length < 3)
+  throw new Error(`la soumission devrait détailler ses lignes, elle en a ${soumission.items?.length ?? 0}`)
+if (!soumission.items.some(l => /Peinture murs/.test(l.description)))
+  throw new Error('la ligne « Peinture murs » manque dans la soumission')
+if (!soumission.items.some(l => /Peinture plafond/.test(l.description)))
+  throw new Error('le travail ajouté à la modification n’a pas suivi dans la soumission')
+if (!soumission.items.some(l => /Salle de bain —/.test(l.description)))
+  throw new Error('les lignes ne portent pas le nom de la pièce')
+const ligneMarge = soumission.items.find(l => /Administration et profit/.test(l.description))
+if (!ligneMarge) throw new Error('la ligne « Administration et profit » manque')
+console.log('OK: lignes détaillées, nom de pièce et ligne de marge présents')
+
+// Chaque ligne garde sa quantité et son unité
+const ligneAvecQte = soumission.items.find(l => /Peinture murs/.test(l.description))
+if (!(ligneAvecQte.qty > 0)) throw new Error('la quantité de la ligne est nulle')
+if (!ligneAvecQte.unit) throw new Error('l’unité de la ligne manque')
+console.log(`OK: quantité et unité conservées — ${ligneAvecQte.qty} ${ligneAvecQte.unit}`)
+
+// La somme des lignes doit égaler le sous-total avant taxes, au cent près :
+// c'est ce que la fiche Soumission recalcule pour afficher son total.
+const sommeLignes = soumission.items.reduce((s, l) => s + l.qty * l.unitPrice, 0)
+console.log(`Somme des lignes : ${sommeLignes.toFixed(2)} $ · sous-total : ${soumission.subtotal} $`)
+if (Math.abs(sommeLignes - soumission.subtotal) > 0.01)
+  throw new Error(`la somme des lignes (${sommeLignes.toFixed(2)}) ne fait pas le sous-total (${soumission.subtotal})`)
+console.log('OK: la somme des lignes fait exactement le sous-total avant taxes')
+
+// ─── La fiche Soumission affiche bien ce détail ──────────────────────────────
+await page.goto(base + '/soumissions')
+await page.waitForTimeout(1200)
+await page.click(`text=${numero}`)
+await page.waitForTimeout(1200)
+const fiche = await page.textContent('body')
+if (/Aucune ligne de détail/.test(fiche))
+  throw new Error('la fiche Soumission affiche encore « Aucune ligne de détail »')
+if (!/Peinture murs/.test(fiche))
+  throw new Error('la fiche Soumission n’affiche pas les lignes')
+console.log('OK: la fiche Soumission affiche les lignes de détail')
+
 // ─── La liste montre la date de modification ─────────────────────────────────
+await page.goto(base + '/estimateur')
 await page.waitForSelector('text=Mes devis enregistrés', { timeout: 8000 })
 if (!(await page.textContent('body')).includes('modifié le'))
   throw new Error('la liste n’indique pas que le devis a été modifié')
