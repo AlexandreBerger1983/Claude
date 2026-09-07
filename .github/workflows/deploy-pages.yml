@@ -82,8 +82,30 @@ jobs:
             https://*.supabase.co) echo "→ Adresse du projet : forme attendue." ;;
             *) echo "::warning::VITE_SUPABASE_URL ne ressemble pas à https://xxxx.supabase.co" ;;
           esac
+          # Une clé service_role a exactement la même forme qu'une clé anon :
+          # seul le rôle inscrit dans le jeton les distingue. On le lit, car
+          # publier une clé service_role sur un site public donnerait à
+          # n'importe quel visiteur un accès total à la base.
+          role_de_jwt() {
+            corps=$(printf '%s' "$1" | cut -d. -f2 | tr '_-' '/+')
+            case $(( ${#corps} % 4 )) in 2) corps="$corps==" ;; 3) corps="$corps=" ;; esac
+            printf '%s' "$corps" | base64 -d 2>/dev/null \
+              | sed -n 's/.*"role"[[:space:]]*:[[:space:]]*"\([a-z_]*\)".*/\1/p'
+          }
           case "$VITE_SUPABASE_ANON_KEY" in
-            eyJ*|sb_publishable_*) echo "→ Clé publique : forme attendue." ;;
+            eyJ*)
+              role=$(role_de_jwt "$VITE_SUPABASE_ANON_KEY")
+              case "$role" in
+                anon) echo "→ Clé publique : rôle « anon », correct." ;;
+                service_role)
+                  echo "::error::La clé enregistrée est la clé service_role, pas la clé anon."
+                  echo "Elle contourne toutes les règles d'accès et serait visible par tous les visiteurs du site."
+                  echo "Déploiement interrompu. Remplacez le secret par la clé « anon public », puis révoquez la clé service_role dans Supabase."
+                  exit 1 ;;
+                "") echo "::warning::Impossible de lire le rôle de la clé — vérifiez qu'il s'agit bien de la clé « anon public »." ;;
+                *)  echo "::warning::Rôle inattendu dans la clé : « $role ». Attendu : anon." ;;
+              esac ;;
+            sb_publishable_*) echo "→ Clé publique (nouveau format) : forme attendue." ;;
             *) echo "::warning::VITE_SUPABASE_ANON_KEY ne ressemble pas à une clé publique Supabase. Attention à ne jamais utiliser la clé service_role." ;;
           esac
 
