@@ -61,6 +61,32 @@ jobs:
       # dépôt, l'application fonctionne sur le stockage du navigateur.
       # La clé « anon » est faite pour être publique : la protection des
       # données vient des règles d'accès (voir construction-sme-app/supabase).
+      # Un secret mal orthographié est autrement invisible : la construction
+      # réussit et l'application repart silencieusement sur le stockage du
+      # navigateur. Ce contrôle dit seulement si chaque secret est présent et
+      # s'il a la forme attendue — jamais sa valeur.
+      - name: Vérifier la configuration de la base de données
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          etat() { [ -n "$1" ] && echo "présent (${#1} caractères)" || echo "ABSENT"; }
+          echo "VITE_SUPABASE_URL      : $(etat "$VITE_SUPABASE_URL")"
+          echo "VITE_SUPABASE_ANON_KEY : $(etat "$VITE_SUPABASE_ANON_KEY")"
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "→ Base de données non configurée : l'application utilisera le stockage du navigateur."
+            echo "  Vérifiez le nom des secrets dans Settings → Secrets and variables → Actions."
+            exit 0
+          fi
+          case "$VITE_SUPABASE_URL" in
+            https://*.supabase.co) echo "→ Adresse du projet : forme attendue." ;;
+            *) echo "::warning::VITE_SUPABASE_URL ne ressemble pas à https://xxxx.supabase.co" ;;
+          esac
+          case "$VITE_SUPABASE_ANON_KEY" in
+            eyJ*|sb_publishable_*) echo "→ Clé publique : forme attendue." ;;
+            *) echo "::warning::VITE_SUPABASE_ANON_KEY ne ressemble pas à une clé publique Supabase. Attention à ne jamais utiliser la clé service_role." ;;
+          esac
+
       - name: Construire l'application
         run: npm run build
         working-directory: construction-sme-app
