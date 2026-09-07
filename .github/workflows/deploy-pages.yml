@@ -78,9 +78,40 @@ jobs:
             echo "  Vérifiez le nom des secrets dans Settings → Secrets and variables → Actions."
             exit 0
           fi
+          # Quand l'adresse est mauvaise, dire lequel des défauts habituels s'y
+          # trouve. On ne montre jamais l'identifiant du projet — seulement ce
+          # qui suit « .supabase.co », c'est-à-dire précisément ce qui est en
+          # trop.
           case "$VITE_SUPABASE_URL" in
             https://*.supabase.co) echo "→ Adresse du projet : forme attendue." ;;
-            *) echo "::warning::VITE_SUPABASE_URL ne ressemble pas à https://xxxx.supabase.co" ;;
+            *)
+              echo "::warning::VITE_SUPABASE_URL ne ressemble pas à https://xxxx.supabase.co"
+              case "$VITE_SUPABASE_URL" in
+                https://*) : ;;
+                http://*)  echo "   • commence par http:// au lieu de https://" ;;
+                *)         echo "   • ne commence pas par https://" ;;
+              esac
+              # On ne montre QUE ce qui suit « .supabase.co » : l'identifiant du
+              # projet, qui le précède, n'est jamais écrit dans le journal. Si
+              # le découpage ne retire rien, c'est que l'adresse ne contient pas
+              # « .supabase.co » du tout — et on n'affiche alors rien d'elle.
+              suffixe="${VITE_SUPABASE_URL##*.supabase.co}"
+              if [ "$suffixe" = "$VITE_SUPABASE_URL" ]; then
+                echo "   • ne contient pas « .supabase.co » — ce n'est pas l'adresse d'un projet Supabase"
+              elif [ -n "$suffixe" ]; then
+                echo "   • ce qui suit « .supabase.co » est à retirer : « $suffixe » (${#suffixe} caractères)"
+                case "$suffixe" in
+                  */rest*) echo "     → c'est le « RESTful endpoint » ; il faut le « Project URL » juste au-dessus" ;;
+                esac
+              fi
+              case "$VITE_SUPABASE_URL" in
+                *" "*) echo "   • contient une espace" ;;
+              esac
+              # Un retour à la ligne collé par mégarde est invisible à l'écran
+              if [ "$(printf '%s' "$VITE_SUPABASE_URL" | wc -l | tr -d ' ')" != "0" ]; then
+                echo "   • contient un retour à la ligne"
+              fi
+              echo "   Attendu : https://<identifiant>.supabase.co — rien après le « .co »." ;;
           esac
           # Une clé service_role a exactement la même forme qu'une clé anon :
           # seul le rôle inscrit dans le jeton les distingue. On le lit, car
