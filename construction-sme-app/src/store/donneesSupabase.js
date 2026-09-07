@@ -98,6 +98,38 @@ export async function supprimer(cle, id, client = supabase) {
   return error ? { erreur: messageEcriture(cle, error) } : {}
 }
 
+// ─── Remplir et vider la base ────────────────────────────────────────────────
+// Sert à préparer une démonstration, puis à faire le ménage après. Les deux
+// opérations touchent la base partagée : l'application les entoure de
+// confirmations, ce module se contente de les exécuter.
+
+export async function remplirAvec(donnees, client = supabase) {
+  if (!client) return { erreur: "La base de données n'est pas configurée." }
+  for (const c of COLLECTIONS) {
+    const objets = donnees?.[c.cle] ?? []
+    if (objets.length === 0) continue
+    const { erreur } = await enregistrer(c.cle, objets, client)
+    if (erreur) return { erreur }
+  }
+  return {}
+}
+
+export async function viderTout(client = supabase) {
+  if (!client) return { erreur: "La base de données n'est pas configurée." }
+  for (const c of COLLECTIONS) {
+    // PostgREST refuse une suppression sans filtre, par sécurité : on en
+    // fournit un qui englobe toutes les lignes.
+    const { error } = await client.from(c.table).delete().gte('id', 0)
+    if (error) return { erreur: messageEcriture(c.cle, error) }
+  }
+  return {}
+}
+
+// Vrai quand aucune collection ne contient rien : c'est la seule situation où
+// charger des exemples ne risque d'écraser le travail de personne.
+export const baseEstVide = (donnees) =>
+  COLLECTIONS.every(c => (donnees?.[c.cle]?.length ?? 0) === 0)
+
 // Les refus de la base sont traduits : « new row violates row-level security »
 // veut dire que le rôle du compte n'a pas le droit d'écrire ici, ce qui n'a
 // rien d'un incident technique.

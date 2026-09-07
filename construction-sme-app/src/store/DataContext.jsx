@@ -11,7 +11,7 @@ import {
   documents as seedDocuments,
 } from '../data/mockData'
 import { supabase, supabaseConfigure } from '../lib/supabase'
-import { chargerTout, enregistrer, supprimer, collectionsVides } from './donneesSupabase'
+import { chargerTout, enregistrer, supprimer, collectionsVides, remplirAvec, viderTout, baseEstVide } from './donneesSupabase'
 
 // Magasin de données central de l'application.
 //
@@ -147,6 +147,32 @@ export function DataProvider({ children }) {
     pousser(() => supprimer(collection, id))
   }
 
+  // ─── Démonstration ─────────────────────────────────────────────────────────
+  // Charger les exemples dans la base, pour montrer l'application remplie.
+  // Refusé si la base contient déjà quelque chose : on ne mélange jamais des
+  // exemples aux vraies données de l'entreprise.
+  const chargerDemonstration = useCallback(async () => {
+    if (!supabaseConfigure) return { erreur: "La base de données n'est pas branchée." }
+    if (!baseEstVide(dataRef.current))
+      return { erreur: 'La base contient déjà des données. Videz-la d’abord si vous voulez repartir des exemples.' }
+    setEnregistrementEnCours(n => n + 1)
+    const { erreur: e } = await remplirAvec(seed())
+    setEnregistrementEnCours(n => Math.max(0, n - 1))
+    if (e) { setErreur(e); return { erreur: e } }
+    await recharger()
+    return {}
+  }, [recharger])
+
+  const viderLaBase = useCallback(async () => {
+    if (!supabaseConfigure) return { erreur: "La base de données n'est pas branchée." }
+    setEnregistrementEnCours(n => n + 1)
+    const { erreur: e } = await viderTout()
+    setEnregistrementEnCours(n => Math.max(0, n - 1))
+    if (e) { setErreur(e); return { erreur: e } }
+    await recharger()
+    return {}
+  }, [recharger])
+
   // Remettre les données d'exemple n'a de sens que sur le stockage du
   // navigateur : sur une base partagée, ce serait écraser le travail de toute
   // l'entreprise par des exemples.
@@ -166,6 +192,9 @@ export function DataProvider({ children }) {
     chargement,
     erreur,
     effacerErreur: () => setErreur(null),
+    estVide: baseEstVide(data),
+    chargerDemonstration,
+    viderLaBase,
     enregistrementEnCours: enregistrementEnCours > 0,
     recharger,
   }

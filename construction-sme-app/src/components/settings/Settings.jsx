@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList, Download, Hammer } from 'lucide-react'
+import { Building2, Save, Check, Upload, X, RotateCcw, ClipboardList, Download, Hammer, Database } from 'lucide-react'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import { RATE_DEFS, RATE_GROUPS, RATES_KEY, defaultRates } from '../../data/roomQuestionnaires'
@@ -218,7 +218,9 @@ function PrixCatalogueTab() {
 
 export default function Settings() {
   const [settings, setSettings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
-  const { resetToSeed, data, surSupabase } = useData()
+  const { resetToSeed, data, surSupabase, estVide, chargerDemonstration, viderLaBase } = useData()
+  const [demoMsg, setDemoMsg] = useState(null)
+  const [demoEnCours, setDemoEnCours] = useState(false)
   const [saved, setSaved] = useState(false)
   const [backupMsg, setBackupMsg] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -277,6 +279,35 @@ export default function Settings() {
     } catch (err) {
       setBackupMsg({ type: 'error', text: `Restauration impossible : ${err.message}` })
     }
+  }
+
+  // Charger les exemples dans la base : utile pour montrer l'application
+  // remplie. Possible seulement sur une base vide.
+  const handleDemo = async () => {
+    setDemoMsg(null); setDemoEnCours(true)
+    const { erreur } = await chargerDemonstration()
+    setDemoEnCours(false)
+    setDemoMsg(erreur
+      ? { type: 'error', text: erreur }
+      : { type: 'ok', text: 'Données de démonstration chargées. Pensez à vider la base après votre présentation.' })
+  }
+
+  // Vider la base efface le travail de toute l'entreprise : on demande d'écrire
+  // le mot, une case à cocher se clique trop facilement.
+  const handleVider = async () => {
+    const reponse = window.prompt(
+      'Cette action efface TOUTES les données de la base : clients, projets, soumissions, factures, feuilles de temps.\n\n'
+      + 'Elle est irréversible et touche tout le monde, pas seulement ce navigateur.\n\n'
+      + 'Écrivez EFFACER pour confirmer.',
+    )
+    if (reponse !== 'EFFACER') {
+      if (reponse !== null) setDemoMsg({ type: 'error', text: 'Suppression annulée : le mot ne correspond pas.' })
+      return
+    }
+    setDemoMsg(null); setDemoEnCours(true)
+    const { erreur } = await viderLaBase()
+    setDemoEnCours(false)
+    setDemoMsg(erreur ? { type: 'error', text: erreur } : { type: 'ok', text: 'La base est vide.' })
   }
 
   const update = (field, value) => setSettings(s => ({ ...s, [field]: value }))
@@ -570,11 +601,46 @@ export default function Settings() {
       <div className="card border-red-100">
         <h3 className="font-semibold text-slate-800 mb-1">Données de l'application</h3>
         {surSupabase ? (
-          <p className="text-xs text-slate-500">
-            Vos données sont dans la base en ligne, partagées par toute l'entreprise.
-            Les exemples de départ ne peuvent plus être remis d'ici : ce serait effacer
-            le travail de tout le monde.
-          </p>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">
+              Vos données sont dans la base en ligne, partagées par toute l'entreprise
+              et par tous vos appareils.
+            </p>
+
+            {estVide ? (
+              <>
+                <p className="text-xs text-slate-500">
+                  La base est vide. Pour <strong>présenter l'application</strong>, vous pouvez y charger
+                  un jeu d'exemples : 6 clients, 5 projets, 5 soumissions, 6 factures,
+                  7 employés, 10 matériaux et leurs feuilles de temps.
+                </p>
+                <button onClick={handleDemo} disabled={demoEnCours} className="btn-secondary disabled:opacity-60">
+                  <Database size={15} /> {demoEnCours ? 'Chargement…' : 'Charger des données de démonstration'}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  La base contient des données. Le bouton ci-dessous les efface toutes —
+                  utile après une présentation, pour repartir propre avant les vraies
+                  données de l'entreprise.
+                </p>
+                <button
+                  onClick={handleVider}
+                  disabled={demoEnCours}
+                  className="btn-secondary text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-60"
+                >
+                  <RotateCcw size={15} /> {demoEnCours ? 'Suppression…' : 'Vider complètement la base'}
+                </button>
+              </>
+            )}
+
+            {demoMsg && (
+              <p className={clsx('text-sm', demoMsg.type === 'ok' ? 'text-emerald-700' : 'text-red-700')}>
+                {demoMsg.text}
+              </p>
+            )}
+          </div>
         ) : (
           <>
             <p className="text-xs text-slate-500 mb-3">
