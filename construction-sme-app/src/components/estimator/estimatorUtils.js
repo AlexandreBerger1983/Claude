@@ -146,6 +146,41 @@ export const emptyDraft = () => ({
   },
 })
 
+// Rouvrir un devis enregistré pour le modifier. On repart de la forme d'un
+// brouillon neuf, complétée par ce qui avait été enregistré : les champs
+// ajoutés à l'application depuis lors gardent ainsi leur valeur par défaut au
+// lieu d'être absents.
+//
+// `modifieId` est la marque de la reprise : à l'enregistrement, le devis
+// remplace l'ancien au lieu d'en créer un nouveau, et garde son numéro.
+export const draftFromQuote = (quote) => {
+  if (!quote) return emptyDraft()
+  const vide = emptyDraft()
+  return {
+    ...vide,
+    createdAt: quote.savedAt ?? vide.createdAt,
+    // On ouvre sur la dernière étape : le devis est déjà complet, la
+    // modification porte le plus souvent sur un prix ou une ligne.
+    step: 3,
+    unit: quote.unit ?? vide.unit,
+    client: {
+      ...vide.client,
+      mode: quote.clientId ? 'existant' : 'nouveau',
+      clientId: quote.clientId ?? '',
+      name: quote.clientName ?? '',
+      phone: quote.clientPhone ?? '',
+      address: quote.address ?? '',
+    },
+    projectType: quote.projectType ?? '',
+    notes: quote.notes ?? '',
+    rooms: Array.isArray(quote.rooms) ? quote.rooms : [],
+    items: Array.isArray(quote.items) ? quote.items : [],
+    settings: { ...vide.settings, ...(quote.settings ?? {}) },
+    modifieId: quote.id,
+    numero: quote.number ?? null,
+  }
+}
+
 export const nextQuoteNumber = (saved) => {
   const year = new Date().getFullYear()
   const count = saved.filter(q => q.number?.includes(String(year))).length

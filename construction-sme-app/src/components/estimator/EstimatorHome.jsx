@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { Plus, FileText, Trash2, ChevronRight, Clock } from 'lucide-react'
+import { Plus, FileText, Trash2, ChevronRight, Clock, Pencil } from 'lucide-react'
 import { useLocalStorage, readStorage, writeStorage } from '../../hooks/useLocalStorage'
-import { DRAFT_KEY, SAVED_KEY } from './estimatorUtils'
+import { DRAFT_KEY, SAVED_KEY, draftFromQuote } from './estimatorUtils'
 import { formatCurrency } from '../../utils/formatters'
 
 // Accueil de l'estimateur : reprendre un brouillon, voir les devis
@@ -14,6 +14,16 @@ export default function EstimatorHome() {
 
   const startNew = () => {
     writeStorage(DRAFT_KEY, null)
+    navigate('/estimateur/nouveau')
+  }
+
+  // Rouvrir un devis enregistré. Un brouillon en cours serait écrasé : on
+  // prévient plutôt que de le faire disparaître sans rien dire.
+  const modifier = (q) => {
+    if (hasDraft && !window.confirm(
+      'Un devis est en cours de saisie et sera abandonné si vous ouvrez celui-ci.\n\nContinuer ?'
+    )) return
+    writeStorage(DRAFT_KEY, draftFromQuote(q))
     navigate('/estimateur/nouveau')
   }
 
@@ -50,7 +60,11 @@ export default function EstimatorHome() {
             <Clock size={24} className="text-amber-700" />
           </div>
           <div className="text-left min-w-0">
-            <p className="font-bold text-amber-800">Devis en cours — reprendre où vous étiez</p>
+            <p className="font-bold text-amber-800">
+              {draft.modifieId
+                ? `Modification en cours — ${draft.numero ?? 'devis existant'}`
+                : 'Devis en cours — reprendre où vous étiez'}
+            </p>
             <p className="text-sm text-amber-700 truncate">
               {draft.client?.name || 'Client à définir'}
               {draft.rooms?.length > 0 && ` · ${draft.rooms.length} pièce${draft.rooms.length > 1 ? 's' : ''}`}
@@ -75,27 +89,42 @@ export default function EstimatorHome() {
         ) : (
           <div className="space-y-2">
             {[...saved].reverse().map(q => (
-              <div key={q.id} className="card flex items-center gap-4 py-4">
+              <div
+                key={q.id}
+                onClick={() => modifier(q)}
+                className="card flex items-center gap-4 py-4 cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
+              >
                 <div className="w-11 h-11 rounded-xl bg-brand-100 flex items-center justify-center flex-shrink-0">
                   <FileText size={20} className="text-brand-600" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-slate-800 truncate">{q.clientName}</p>
                   <p className="text-xs text-slate-500 truncate">
-                    {q.number} · {q.projectType || 'Travaux'} · {new Date(q.savedAt).toLocaleDateString('fr-CA')}
+                    {q.number} · {q.projectType || 'Travaux'} ·{' '}
+                    {q.modifieLe
+                      ? `modifié le ${new Date(q.modifieLe).toLocaleDateString('fr-CA')}`
+                      : new Date(q.savedAt).toLocaleDateString('fr-CA')}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="font-bold text-brand-600">{formatCurrency(q.total)}</p>
                   <p className="text-[10px] text-slate-400">taxes incluses</p>
                 </div>
-                <button
-                  onClick={() => deleteSaved(q.id)}
-                  className="p-2 text-slate-300 hover:text-red-400 transition-colors flex-shrink-0"
-                  aria-label="Supprimer"
-                >
-                  <Trash2 size={17} />
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => modifier(q)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 transition-colors"
+                  >
+                    <Pencil size={14} /> Modifier
+                  </button>
+                  <button
+                    onClick={() => deleteSaved(q.id)}
+                    className="p-2 text-slate-300 hover:text-red-400 transition-colors"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

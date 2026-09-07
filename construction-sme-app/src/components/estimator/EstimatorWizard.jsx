@@ -12,7 +12,7 @@ import { formatCurrency } from '../../utils/formatters'
 import { useLocalStorage } from '../../hooks/useLocalStorage'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import {
-  DRAFT_KEY, SAVED_KEY, emptyDraft, computeRoom, autoQtyForItem,
+  DRAFT_KEY, SAVED_KEY, emptyDraft, draftFromQuote, computeRoom, autoQtyForItem,
   lineTotal, computeTotals, nextQuoteNumber, fromMeters,
   applyMeasureBasis, basisUnit, qtyFactor, BASE_PIECE, BASE_LINEAIRE,
 } from './estimatorUtils'
@@ -1134,7 +1134,7 @@ function StepQuote({ draft, update, onSave }) {
 // ─── Assistant principal ──────────────────────────────────────────────────────
 export default function EstimatorWizard() {
   const navigate = useNavigate()
-  const { data, add } = useData()
+  const { data, add, update: majDonnees } = useData()
   const [draft, setDraft] = useLocalStorage(DRAFT_KEY, null)
   const [saved, setSaved] = useLocalStorage(SAVED_KEY, [])
   const [justSaved, setJustSaved] = useState(false)
@@ -1169,12 +1169,21 @@ export default function EstimatorWizard() {
     '',
   ]
 
+  // Enregistrement d'un devis — création, ou remplacement quand on a rouvert
+  // un devis existant pour le modifier.
   const handleSave = () => {
+    const enModification = Boolean(draft.modifieId)
+    const ancien = enModification ? saved.find(q => q.id === draft.modifieId) : null
+    const clientObj = data.clients.find(cl => cl.id === Number(draft.client.clientId))
+
     const quote = {
-      id: Date.now(),
-      number: nextQuoteNumber(saved),
+      // Un devis modifié garde son identifiant et son numéro : c'est le même
+      // devis pour le client, pas un second qu'il faudrait rapprocher.
+      id: enModification ? draft.modifieId : Date.now(),
+      number: draft.numero ?? ancien?.number ?? nextQuoteNumber(saved),
       clientName: draft.client.name,
       clientPhone: draft.client.phone,
+      clientId: clientObj?.id ?? null,
       address: draft.client.address,
       projectType: draft.projectType,
       notes: draft.notes,
@@ -1183,31 +1192,44 @@ export default function EstimatorWizard() {
       items: draft.items,
       settings: draft.settings,
       total: totals.total,
-      savedAt: new Date().toISOString(),
+      savedAt: ancien?.savedAt ?? new Date().toISOString(),
+      ...(enModification ? { modifieLe: new Date().toISOString() } : {}),
     }
-    setSaved(prev => [...prev, quote])
+
+    setSaved(prev => enModification
+      ? prev.map(q => (q.id === quote.id ? quote : q))
+      : [...prev, quote])
 
     // Le devis apparaît aussi dans le module Soumissions, pour un suivi
     // centralisé (statut Brouillon jusqu'à envoi/acceptation).
-    const clientObj = data.clients.find(cl => cl.id === Number(draft.client.clientId))
-    add('quotes', {
+    const champsSoumission = {
       number: quote.number,
       title: draft.projectType ? `${draft.projectType} — ${draft.client.name}` : `Devis — ${draft.client.name}`,
       clientId: clientObj?.id ?? null,
       client: draft.client.name,
-      date: new Date().toISOString().slice(0, 10),
       validUntil: new Date(Date.now() + QUOTE_VALIDITY_DAYS * 86400000).toISOString().slice(0, 10),
-      status: 'Brouillon',
       subtotal: totals.pretax,
       tps: totals.tps,
       tvq: totals.tvq,
       total: totals.total,
-      estimator: '',
-      items: [],
-    })
+    }
+    const soumissionExistante = data.quotes.find(q => q.number === quote.number)
+    if (enModification && soumissionExistante) {
+      // On ne touche ni à la date d'origine ni au statut : un devis déjà
+      // envoyé ou accepté ne doit pas silencieusement redevenir un brouillon.
+      majDonnees('quotes', soumissionExistante.id, champsSoumission)
+    } else {
+      add('quotes', {
+        ...champsSoumission,
+        date: new Date().toISOString().slice(0, 10),
+        status: 'Brouillon',
+        estimator: '',
+        items: [],
+      })
+    }
 
     setDraft(null)
-    setJustSaved(true)
+    setJustSaved(enModification ? 'modifie' : 'cree')
     setTimeout(() => navigate('/estimateur'), 1600)
   }
 
@@ -1217,8 +1239,14 @@ export default function EstimatorWizard() {
         <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5">
           <PartyPopper size={36} className="text-emerald-600" />
         </div>
-        <p className="text-xl font-bold text-slate-800">Devis enregistré !</p>
-        <p className="text-sm text-slate-500 mt-2">Vous le retrouverez dans « Mes devis enregistrés ».</p>
+        <p className="text-xl font-bold text-slate-800">
+          {justSaved === 'modifie' ? 'Devis mis à jour !' : 'Devis enregistré !'}
+        </p>
+        <p className="text-sm text-slate-500 mt-2">
+          {justSaved === 'modifie'
+            ? 'Les modifications remplacent la version précédente, sous le même numéro.'
+            : 'Vous le retrouverez dans « Mes devis enregistrés ».'}
+        </p>
       </div>
     )
   }
@@ -1253,6 +1281,18 @@ export default function EstimatorWizard() {
           ))}
         </div>
       </div>
+
+      {/* Modification d'un devis existant : on le dit, sinon rien ne distingue
+          cette saisie d'une création, et on croirait faire un second devis. */}
+      {draft.modifieId && (
+        <div className="mb-4 flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl no-print">
+          <Pencil size={15} className="text-amber-600 flex-shrink-0" />
+          <p className="text-sm text-amber-800">
+            Modification du devis <strong>{draft.numero}</strong> — l'enregistrement
+            remplacera la version précédente, sous le même numéro.
+          </p>
+        </div>
+      )}
 
       {/* Contenu de l'étape */}
       {step === 0 && <StepClient draft={draft} update={update} />}
