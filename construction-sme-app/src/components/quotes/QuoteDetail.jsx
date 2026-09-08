@@ -7,6 +7,7 @@ import { useLocalStorage, readStorage } from '../../hooks/useLocalStorage'
 import { SAVED_KEY } from '../estimator/estimatorUtils'
 import { SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS } from '../../data/settingsDefaults'
 import QuoteLegalFooter from './QuoteLegalFooter'
+import { assurerClient } from '../../data/clientsAuto'
 import clsx from 'clsx'
 
 // Totaux calculés à partir des lignes (ou du sous-total manuel si aucune ligne)
@@ -21,7 +22,7 @@ const computeTotals = (items, manualSubtotal) => {
 
 export default function QuoteDetail() {
   const { id } = useParams()
-  const { data, update, remove } = useData()
+  const { data, add, update, remove } = useData()
   const navigate = useNavigate()
   const quote = data.quotes.find(q => q.id === Number(id))
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
@@ -78,7 +79,15 @@ export default function QuoteDetail() {
         return { ...it, qty, unitPrice, total: +(qty * unitPrice).toFixed(2) }
       })
     const totals = computeTotals(cleanItems, form.manualSubtotal)
-    const clientObj = data.clients.find(c => c.name === form.client)
+    // Un nom saisi ici crée le client s'il n'existe pas encore : la soumission
+    // ne doit pas rester rattachée à un nom que la fiche Clients ignore.
+    const { client: clientObj } = assurerClient({
+      clients: data.clients,
+      // On résout par le nom seul : changer le nom ici doit rattacher la
+      // soumission à ce client-là, pas conserver l'ancien lien.
+      saisie: { name: form.client },
+      add, update,
+    })
     update('quotes', quote.id, {
       title: form.title,
       client: form.client,

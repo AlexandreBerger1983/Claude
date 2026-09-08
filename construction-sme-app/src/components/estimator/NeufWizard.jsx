@@ -21,6 +21,8 @@ import { formatCurrency } from '../../utils/formatters'
 import { SAVED_KEY, nextQuoteNumber } from './estimatorUtils'
 import { QUOTE_VALIDITY_DAYS } from '../../data/legalTerms'
 import QuoteLegalFooter from '../quotes/QuoteLegalFooter'
+import AvisNouveauClient from './AvisNouveauClient'
+import { assurerClient } from '../../data/clientsAuto'
 import {
   DIVISIONS_NEUF, TAUX_HORAIRE_NEUF, TYPES_LIGNE, INCLUS, EXCLUS, cleGabarit,
 } from '../../data/neufStructure'
@@ -131,6 +133,7 @@ function EtapeClient({ draft, update }) {
             <input value={c.address} onChange={e => update('client', { ...c, address: e.target.value })}
               placeholder="ex: 455 rue des Érables, Laval" className="input text-base py-3" />
           </div>
+          <AvisNouveauClient clients={data.clients} saisie={c} />
         </div>
       )}
 
@@ -609,7 +612,11 @@ export default function NeufWizard() {
   const enregistrer = () => {
     const enModification = Boolean(draft.modifieId)
     const ancien = enModification ? saved.find(q => q.id === draft.modifieId) : null
-    const clientObj = data.clients.find(cl => String(cl.id) === String(draft.client.clientId))
+    // Comme pour la rénovation : un nom nouveau devient un client de la fiche
+    // Clients, un nom déjà connu s'y rattache sans doublon.
+    const { client: clientObj } = assurerClient({
+      clients: data.clients, saisie: draft.client, add, update: majDonnees,
+    })
 
     const devis = {
       id: enModification ? draft.modifieId : Date.now(),

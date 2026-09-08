@@ -22,6 +22,8 @@ import { questionnaireForRoom, defaultRates, RATES_KEY } from '../../data/roomQu
 import { readStorage } from '../../hooks/useLocalStorage'
 import { QUOTE_VALIDITY_DAYS } from '../../data/legalTerms'
 import { costSummary, ADMIN_PROFIT_PCT } from '../../data/quoteCosting'
+import { assurerClient } from '../../data/clientsAuto'
+import AvisNouveauClient from './AvisNouveauClient'
 import CostSummary from './CostSummary'
 import WorkChecklist from './WorkChecklist'
 import QuoteLegalFooter from '../quotes/QuoteLegalFooter'
@@ -116,6 +118,7 @@ function StepClient({ draft, update }) {
               className="input text-base py-3"
             />
           </div>
+          <AvisNouveauClient clients={clients} saisie={c} />
         </div>
       )}
 
@@ -1174,7 +1177,12 @@ export default function EstimatorWizard() {
   const handleSave = () => {
     const enModification = Boolean(draft.modifieId)
     const ancien = enModification ? saved.find(q => q.id === draft.modifieId) : null
-    const clientObj = data.clients.find(cl => cl.id === Number(draft.client.clientId))
+    // Un nom tapé ici devient un vrai client : il apparaît dans la fiche
+    // Clients sans avoir à le ressaisir. Un nom déjà connu rattache le devis
+    // au client existant plutôt que d'en créer un second.
+    const { client: clientObj } = assurerClient({
+      clients: data.clients, saisie: draft.client, add, update: majDonnees,
+    })
 
     const quote = {
       // Un devis modifié garde son identifiant et son numéro : c'est le même
