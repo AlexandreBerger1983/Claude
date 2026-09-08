@@ -79,9 +79,11 @@ function QuoteList() {
         ))}
       </div>
 
-      {/* Table */}
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Table — huit colonnes ne tiennent pas sur un téléphone. Sans
+          défilement horizontal, la colonne d'actions était simplement rognée
+          et le bouton de suppression devenait inatteignable. */}
+      <div className="card p-0 overflow-x-auto">
+        <table className="w-full text-sm min-w-[52rem]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">No / Titre</th>

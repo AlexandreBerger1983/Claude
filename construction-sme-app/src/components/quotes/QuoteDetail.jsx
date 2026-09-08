@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Printer, Send, CheckCircle, Pencil, Save, X, Plus, Trash2, FileSpreadsheet, FileText } from 'lucide-react'
 import { useData } from '../../store/DataContext'
 import { formatCurrency, formatDate, statusColor } from '../../utils/formatters'
@@ -21,7 +21,8 @@ const computeTotals = (items, manualSubtotal) => {
 
 export default function QuoteDetail() {
   const { id } = useParams()
-  const { data, update } = useData()
+  const { data, update, remove } = useData()
+  const navigate = useNavigate()
   const quote = data.quotes.find(q => q.id === Number(id))
   const [settings] = useLocalStorage(SETTINGS_KEY, DEFAULT_COMPANY_SETTINGS)
   const [form, setForm] = useState(null) // copie de travail en mode édition
@@ -47,6 +48,19 @@ export default function QuoteDetail() {
   const setField = (field, value) => setForm(f => ({ ...f, [field]: value }))
   const setItem = (itemId, field, value) =>
     setForm(f => ({ ...f, items: f.items.map(it => it.id === itemId ? { ...it, [field]: value } : it) }))
+  // Supprimer la soumission. Une soumission acceptée engage l'entreprise :
+  // l'avertissement le dit avant, plutôt que de traiter les deux cas pareil.
+  const supprimerSoumission = () => {
+    const message = quote.status === 'Acceptée'
+      ? `Supprimer la soumission « ${quote.number} » ?\n\n`
+        + `ATTENTION : cette soumission a été ACCEPTÉE par le client.\n\n`
+        + `Cette action est définitive.`
+      : `Supprimer la soumission « ${quote.number} — ${quote.title} » ?\n\nCette action est définitive.`
+    if (!window.confirm(message)) return
+    remove('quotes', quote.id)
+    navigate('/soumissions')
+  }
+
   const removeItem = (itemId) =>
     setForm(f => ({ ...f, items: f.items.filter(it => it.id !== itemId) }))
   const addItem = () =>
@@ -193,6 +207,15 @@ export default function QuoteDetail() {
                     <CheckCircle size={15} /> Marquer acceptée
                   </button>
                 )}
+                {/* Sur téléphone, la colonne d'actions de la liste est hors
+                    d'atteinte : la suppression doit exister ici aussi. */}
+                <button
+                  onClick={supprimerSoumission}
+                  className="btn-secondary text-red-600 border-red-200 hover:bg-red-50"
+                  title="Supprimer cette soumission"
+                >
+                  <Trash2 size={15} /> Supprimer
+                </button>
               </>
             )}
           </div>
